@@ -154,7 +154,6 @@ export default function Sentinelle() {
   const [tab, setTab] = useState("carte");
   const [showForm, setShowForm] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
-  const [showStationList, setShowStationList] = useState(true);
   // ---- Mode hors-ligne basique : file d'attente locale, envoi auto au retour réseau ----
   const OFFLINE_QUEUE_KEY = "sentinelle_offline_queue";
   const [pendingCount, setPendingCount] = useState(() => {
@@ -703,10 +702,10 @@ export default function Sentinelle() {
         .pin:hover { transform: scale(1.15); }
         ::selection { background: #FF5A2E; color: #0A0D10; }
         select option { color: #0A0D10; }
-        .legend-toggle-btn, .stations-toggle-btn { display: none; }
+        .legend-toggle-btn { display: none; }
         @media (max-width: 760px) {
-          .legend-toggle-btn, .stations-toggle-btn { display: inline-flex !important; }
-          .legend-body.collapsed, .stations-body.collapsed { display: none !important; }
+          .legend-toggle-btn { display: inline-flex !important; }
+          .legend-body.collapsed { display: none !important; }
         }
       `}</style>
 
@@ -817,11 +816,7 @@ export default function Sentinelle() {
                   </div>
                 </div>
 
-              <button className="stations-toggle-btn" onClick={() => setShowStationList((v) => !v)} style={{ background: "none", border: "1px solid #1E262D", color: "#A3ADB6", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", alignItems: "center", gap: 6, marginBottom: 14 }}>
-                {showStationList ? <X size={14} /> : <ChevronRight size={14} style={{ transform: "rotate(90deg)" }} />} {showStationList ? "Masquer la ligne" : "Afficher la ligne"}
-              </button>
-
-              <div className={`stations-body${showStationList ? "" : " collapsed"}`}>
+              <div>
                 {line.stations.map((name, i) => {
                   const count = liveStationCounts[`${activeLine}__${name}`] || 0;
                   const isLast = i === line.stations.length - 1;
