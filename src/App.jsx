@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { AlertTriangle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Bell, BellOff, Copy, WifiOff } from "lucide-react";
+import { AlertTriangle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Bell, BellOff, Copy, WifiOff, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import AdminPanel from "./AdminPanel";
 import jsPDF from "jspdf";
@@ -41,14 +41,14 @@ const STATUTS = {
   nouveau: { label: "Nouveau", color: "#FF5A2E", icon: AlertTriangle },
   pris_en_charge: { label: "Pris en charge", color: "#FFC145", icon: Clock, action: "Pris en charge par" },
   interpellation: { label: "Interpellation", color: "#23C9A7", icon: ShieldCheck, action: "Interpellé par" },
-  faux_positif: { label: "Faux positif", color: "#5B6670", icon: X, action: "Classé faux positif par" },
+  faux_positif: { label: "Faux positif", color: "#8F99A3", icon: X, action: "Classé faux positif par" },
 };
 
 function freshness(tsMs) {
   const mins = (Date.now() - tsMs) / 60000;
   if (mins < 15) return { label: "< 15 min", color: "#FF5A2E", pulse: true };
   if (mins < 60) return { label: "< 1 h", color: "#FFC145", pulse: false };
-  return { label: `${Math.round(mins / 60)} h`, color: "#5B6670", pulse: false };
+  return { label: `${Math.round(mins / 60)} h`, color: "#8F99A3", pulse: false };
 }
 
 function fmtTime(tsMs) {
@@ -111,7 +111,7 @@ function computeRecurrence(signalements) {
 // la case (pas un ratio relatif au max) : plus simple à lire et plus stable
 // d'une période à l'autre.
 function heatColor(count) {
-  if (count <= 0) return { bg: "#1E262D", fg: "#5B6670" };
+  if (count <= 0) return { bg: "#1E262D", fg: "#8F99A3" };
   if (count === 1) return { bg: "#D9A63B", fg: "#0A0D10" }; // modéré — jaune
   if (count === 2) return { bg: "#E5342E", fg: "#FFFFFF" }; // élevé — rouge
   return { bg: "#7A1512", fg: "#FFFFFF" }; // pic (3+) — rouge foncé
@@ -154,6 +154,7 @@ export default function Sentinelle() {
   const [tab, setTab] = useState("carte");
   const [showForm, setShowForm] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  const [showStationList, setShowStationList] = useState(true);
   // ---- Mode hors-ligne basique : file d'attente locale, envoi auto au retour réseau ----
   const OFFLINE_QUEUE_KEY = "sentinelle_offline_queue";
   const [pendingCount, setPendingCount] = useState(() => {
@@ -507,6 +508,16 @@ export default function Sentinelle() {
     else fetchSignalements();
   }
 
+  async function deleteSignalement(id) {
+    if (!confirm("Supprimer définitivement ce signalement ? Cette action est irréversible.")) return;
+    const { error } = await supabase.from("signalements").delete().eq("id", id);
+    if (error) setDataError("Erreur à la suppression : " + error.message);
+    else {
+      setSelectedPin(null);
+      fetchSignalements();
+    }
+  }
+
   async function loadLogoBase64() {
     try {
       const res = await fetch("/logo.png");
@@ -645,7 +656,7 @@ export default function Sentinelle() {
   // ---- Écrans de chargement / auth ----
   if (sessionLoading) {
     return (
-      <div style={{ background: "#0A0D10", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#5B6670", fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ background: "#0A0D10", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#8F99A3", fontFamily: "'Inter', sans-serif" }}>
         <style>{FONT_IMPORT}</style>
         Chargement…
       </div>
@@ -662,12 +673,12 @@ export default function Sentinelle() {
             <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 800, color: "#E8ECEF", textTransform: "uppercase" }}>Sentinelle Transport</span>
           </div>
 
-          <div style={{ fontSize: 12, color: "#5B6670", marginBottom: 18 }}>Connexion avec le matricule et le mot de passe fournis par un administrateur.</div>
+          <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 18 }}>Connexion avec le matricule et le mot de passe fournis par un administrateur.</div>
 
-          <label style={{ fontSize: 12, color: "#7C8892" }}>Matricule</label>
+          <label style={{ fontSize: 12, color: "#A3ADB6" }}>Matricule</label>
           <input value={authForm.matricule} onChange={(e) => setAuthForm({ ...authForm, matricule: e.target.value })} placeholder="Ex. GP4521" style={{ width: "100%", background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 14 }} />
 
-          <label style={{ fontSize: 12, color: "#7C8892" }}>Mot de passe</label>
+          <label style={{ fontSize: 12, color: "#A3ADB6" }}>Mot de passe</label>
           <input type="password" value={authForm.password} onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })} placeholder="••••••••" style={{ width: "100%", background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 14 }} />
 
           {authError && <div style={{ fontSize: 12, color: "#FF5A2E", marginBottom: 12 }}>{authError}</div>}
@@ -692,10 +703,10 @@ export default function Sentinelle() {
         .pin:hover { transform: scale(1.15); }
         ::selection { background: #FF5A2E; color: #0A0D10; }
         select option { color: #0A0D10; }
-        .legend-toggle-btn { display: none; }
+        .legend-toggle-btn, .stations-toggle-btn { display: none; }
         @media (max-width: 760px) {
-          .legend-toggle-btn { display: inline-flex !important; }
-          .legend-body.collapsed { display: none !important; }
+          .legend-toggle-btn, .stations-toggle-btn { display: inline-flex !important; }
+          .legend-body.collapsed, .stations-body.collapsed { display: none !important; }
         }
       `}</style>
 
@@ -707,26 +718,26 @@ export default function Sentinelle() {
           {dataError && <span style={{ fontSize: 11, color: "#FF5A2E" }}>{dataError}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <span className="mono" style={{ fontSize: 12, color: "#7C8892" }}>{profile ? `${profile.matricule} · ${ROLE_LABELS[profile.role] || profile.role}` : "…"}</span>
+          <span className="mono" style={{ fontSize: 12, color: "#A3ADB6" }}>{profile ? `${profile.matricule} · ${ROLE_LABELS[profile.role] || profile.role}` : "…"}</span>
           {pendingCount > 0 && (
             <span title="Signalement(s) en attente d'envoi — seront transmis automatiquement dès que le réseau revient" className="mono" style={{ fontSize: 11, color: "#FFC145", border: "1px solid #FFC145", borderRadius: 6, padding: "5px 9px", display: "flex", alignItems: "center", gap: 5 }}>
               <WifiOff size={12} /> {pendingCount} en attente
             </span>
           )}
           {profile?.role !== "agent_station" && notifEnabled && (
-            <button onClick={cycleNotifScope} title="Portée des alertes sonores" style={{ background: "none", border: "1px solid #1E262D", color: "#5B6670", borderRadius: 6, padding: "6px 10px", fontSize: 11, cursor: "pointer" }}>
+            <button onClick={cycleNotifScope} title="Portée des alertes sonores" style={{ background: "none", border: "1px solid #1E262D", color: "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 11, cursor: "pointer" }}>
               {notifScope === "active" ? "Alertes : ma ligne" : "Alertes : toutes lignes"}
             </button>
           )}
-          <button onClick={toggleNotifications} title={notifEnabled ? "Désactiver les alertes" : "Activer les alertes"} style={{ background: "none", border: "1px solid #1E262D", color: notifEnabled ? "#FF5A2E" : "#5B6670", borderRadius: 6, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center" }}>
+          <button onClick={toggleNotifications} title={notifEnabled ? "Désactiver les alertes" : "Activer les alertes"} style={{ background: "none", border: "1px solid #1E262D", color: notifEnabled ? "#FF5A2E" : "#8F99A3", borderRadius: 6, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center" }}>
             {notifEnabled ? <Bell size={15} /> : <BellOff size={15} />}
           </button>
           {profile?.role === "admin" && (
-            <button onClick={() => setTab("admin")} style={{ background: "none", border: "1px solid #1E262D", color: tab === "admin" ? "#FF5A2E" : "#5B6670", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+            <button onClick={() => setTab("admin")} style={{ background: "none", border: "1px solid #1E262D", color: tab === "admin" ? "#FF5A2E" : "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
               <ShieldCheck size={13} /> Administration
             </button>
           )}
-          <button onClick={signOut} style={{ background: "none", border: "1px solid #1E262D", color: "#5B6670", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Fin de service</button>
+          <button onClick={signOut} style={{ background: "none", border: "1px solid #1E262D", color: "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Fin de service</button>
           <button onClick={() => { setForm({ line: activeLine, station: LINES[activeLine].stations[0], type: "pickpocket", nb: 1, desc: "" }); setShowForm(true); }} style={{ background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <AlertTriangle size={16} /> Signaler
           </button>
@@ -736,7 +747,7 @@ export default function Sentinelle() {
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, padding: "12px 20px 0", borderBottom: "1px solid #1E262D" }}>
         {[["carte", "Carte live"], ...(profile?.role === "agent_station" ? [] : [["stats", "Statistiques"]])].map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)} className="disp" style={{ background: "none", border: "none", color: tab === key ? "#E8ECEF" : "#5B6670", fontSize: 17, fontWeight: 700, textTransform: "uppercase", padding: "6px 14px 12px", cursor: "pointer", borderBottom: tab === key ? "2px solid #FF5A2E" : "2px solid transparent" }}>
+          <button key={key} onClick={() => setTab(key)} className="disp" style={{ background: "none", border: "none", color: tab === key ? "#E8ECEF" : "#8F99A3", fontSize: 17, fontWeight: 700, textTransform: "uppercase", padding: "6px 14px 12px", cursor: "pointer", borderBottom: tab === key ? "2px solid #FF5A2E" : "2px solid transparent" }}>
             {label}
           </button>
         ))}
@@ -745,7 +756,7 @@ export default function Sentinelle() {
       {tab === "admin" && profile?.role === "admin" ? (
         <AdminPanel onClose={() => setTab("carte")} />
       ) : dataLoading ? (
-        <div style={{ padding: 40, textAlign: "center", color: "#5B6670" }}>Chargement des signalements…</div>
+        <div style={{ padding: 40, textAlign: "center", color: "#8F99A3" }}>Chargement des signalements…</div>
       ) : tab === "carte" ? (
         <>
           {/* Line selector — verrouillé sur sa ligne pour un agent de station */}
@@ -755,7 +766,7 @@ export default function Sentinelle() {
                 width: 30, height: 30, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
                 background: LINES[activeLine].color, color: LINES[activeLine].dark ? "#fff" : "#0A0D10", fontWeight: 700, fontSize: 12,
               }} className="mono">{activeLine}</span>
-              <span style={{ fontSize: 12, color: "#5B6670" }}>Ligne affectée — accès limité à {LINES[activeLine].name}</span>
+              <span style={{ fontSize: 12, color: "#8F99A3" }}>Ligne affectée — accès limité à {LINES[activeLine].name}</span>
             </div>
           ) : (
             <div style={{ display: "flex", gap: 6, padding: "14px 20px 0", flexWrap: "wrap" }}>
@@ -775,15 +786,15 @@ export default function Sentinelle() {
                 <div className="disp" style={{ fontSize: 15, fontWeight: 800, color: line.color, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
                   <MapPin size={14} /> {line.name} — {line.stations[0]} ↔ {line.stations[line.stations.length - 1]}
                 </div>
-                <button className="legend-toggle-btn" onClick={() => setShowLegend((v) => !v)} style={{ background: "none", border: "1px solid #1E262D", color: "#7C8892", borderRadius: 6, padding: "5px 9px", fontSize: 11, cursor: "pointer", alignItems: "center", gap: 5 }}>
-                  {showLegend ? <X size={11} /> : <ChevronRight size={11} style={{ transform: "rotate(90deg)" }} />} Légende
+                <button className="legend-toggle-btn" onClick={() => setShowLegend((v) => !v)} style={{ background: "#FFC14522", border: "1.5px solid #FFC145", color: "#FFC145", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", alignItems: "center", gap: 6 }}>
+                  {showLegend ? <X size={14} /> : <ChevronRight size={14} style={{ transform: "rotate(90deg)" }} />} Légende
                 </button>
               </div>
 
               <div className={`legend-body${showLegend ? "" : " collapsed"}`} style={{ background: "#0A0D10", border: "1px solid #1E262D", borderRadius: 8, padding: "12px 14px", marginBottom: 20 }}>
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     {Object.entries(TYPES).map(([k, v]) => (
-                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7C8892" }}>
+                      <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#A3ADB6" }}>
                         <div style={{ width: 10, height: 10, borderRadius: "50%", background: v.color }} /> {v.short} — {v.label}
                       </div>
                     ))}
@@ -792,7 +803,7 @@ export default function Sentinelle() {
                     {Object.entries(STATUTS).map(([k, v]) => {
                       const Icon = v.icon;
                       return (
-                        <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7C8892" }}>
+                        <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#A3ADB6" }}>
                           <div style={{ width: 16, height: 16, borderRadius: "50%", background: v.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
                             <Icon size={9} color="#0A0D10" />
                           </div>
@@ -800,13 +811,17 @@ export default function Sentinelle() {
                         </div>
                       );
                     })}
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7C8892" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#A3ADB6" }}>
                       <div style={{ width: 10, height: 10, borderRadius: "50%", border: "2px solid #FF5A2E" }} /> Signalement &lt; 15 min
                     </div>
                   </div>
                 </div>
 
-              <div>
+              <button className="stations-toggle-btn" onClick={() => setShowStationList((v) => !v)} style={{ background: "none", border: "1px solid #1E262D", color: "#A3ADB6", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer", alignItems: "center", gap: 6, marginBottom: 14 }}>
+                {showStationList ? <X size={14} /> : <ChevronRight size={14} style={{ transform: "rotate(90deg)" }} />} {showStationList ? "Masquer la ligne" : "Afficher la ligne"}
+              </button>
+
+              <div className={`stations-body${showStationList ? "" : " collapsed"}`}>
                 {line.stations.map((name, i) => {
                   const count = liveStationCounts[`${activeLine}__${name}`] || 0;
                   const isLast = i === line.stations.length - 1;
@@ -820,7 +835,7 @@ export default function Sentinelle() {
                       <div style={{ flex: 1, paddingBottom: 18 }}>
                         <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 14, fontWeight: 600 }}>{name}</span>
-                          {count > 0 && <span className="mono" style={{ fontSize: 10, color: "#5B6670" }}>{count} sign.</span>}
+                          {count > 0 && <span className="mono" style={{ fontSize: 10, color: "#8F99A3" }}>{count} sign.</span>}
                         </div>
                         {pins.length > 0 && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
@@ -853,10 +868,10 @@ export default function Sentinelle() {
             {/* Fil de tous les signalements */}
             <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "column", gap: 10, maxHeight: 780, overflowY: "auto" }}>
               <div>
-                <div className="disp" style={{ fontSize: 14, color: "#5B6670", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
                   <Activity size={14} /> Fil de tous les signalements
                 </div>
-                <div style={{ fontSize: 11, color: "#5B6670", marginTop: 2 }}>Signalements des dernières 24 heures</div>
+                <div style={{ fontSize: 11, color: "#8F99A3", marginTop: 2 }}>Signalements des dernières 24 heures</div>
               </div>
               {last24h.map((s) => {
                 const tsMs = new Date(s.created_at).getTime();
@@ -882,13 +897,18 @@ export default function Sentinelle() {
                     </div>
                     <div style={{ fontSize: 13, color: "#B4BCC4", marginTop: 6, lineHeight: 1.4 }}>{s.description}</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                      <span className="mono" style={{ fontSize: 11, color: "#5B6670" }}>
+                      <span className="mono" style={{ fontSize: 11, color: "#8F99A3" }}>
                         <Users size={11} style={{ verticalAlign: -2, marginRight: 3 }} />{s.nb_personnes} · {equipeLabel(s)} · {fmtTime(tsMs)}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <button onClick={() => duplicateSignalement(s)} title="Dupliquer ce signalement — pré-remplit un nouveau signalement avec les mêmes infos" style={{ background: "none", border: "1px solid #1E262D", color: "#7C8892", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                        <button onClick={() => duplicateSignalement(s)} title="Dupliquer ce signalement — pré-remplit un nouveau signalement avec les mêmes infos" style={{ background: "none", border: "1px solid #1E262D", color: "#A3ADB6", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                           <Copy size={11} /> Dupliquer
                         </button>
+                        {profile?.role === "admin" && (
+                          <button onClick={() => deleteSignalement(s.id)} title="Supprimer définitivement ce signalement (admin)" style={{ background: "none", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                            <Trash2 size={11} />
+                          </button>
+                        )}
                         {canEditStatut ? (
                         <select value={s.statut} onChange={(e) => updateStatut(s.id, e.target.value)} style={{ background: "#0A0D10", color: statutInfo.color, border: `1px solid ${statutInfo.color}`, borderRadius: 4, fontSize: 11, padding: "3px 6px", colorScheme: "light" }}>
                           {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{v.label}</option>)}
@@ -898,7 +918,7 @@ export default function Sentinelle() {
                         )}
                       </div>
                     </div>                    {s.statut !== "nouveau" && s.statut_agent && (
-                      <div style={{ fontSize: 11, color: "#5B6670", marginTop: 6 }}>
+                      <div style={{ fontSize: 11, color: "#8F99A3", marginTop: 6 }}>
                         {statutInfo.action} <span style={{ color: "#B4BCC4" }}>{canEditStatut ? `${s.statut_agent.equipe} (${s.statut_agent.nom})` : s.statut_agent.equipe}</span>
                         {s.statut_updated_at && <> · {fmtTime(new Date(s.statut_updated_at).getTime())}</>}
                       </div>
@@ -906,7 +926,7 @@ export default function Sentinelle() {
                   </div>
                 );
               })}
-              {last24h.length === 0 && <div style={{ fontSize: 13, color: "#5B6670" }}>Aucun signalement au cours des dernières 24h.</div>}
+              {last24h.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Aucun signalement au cours des dernières 24h.</div>}
             </div>
           </div>
         </>
@@ -914,29 +934,29 @@ export default function Sentinelle() {
         <div style={{ padding: 20, display: "flex", flexWrap: "wrap", gap: 20 }}>
           <div style={{ flex: "1 1 100%", background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <div className="disp" style={{ fontSize: 14, color: "#5B6670", textTransform: "uppercase" }}>Recherche par période</div>
+              <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase" }}>Recherche par période</div>
               <button onClick={exportStatsPDF} disabled={pdfBusy} style={{ background: "none", border: "1px solid #FF5A2E", color: "#FF5A2E", borderRadius: 6, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: pdfBusy ? "default" : "pointer", opacity: pdfBusy ? 0.6 : 1, display: "flex", alignItems: "center", gap: 6 }}>
                 <FileDown size={14} /> {pdfBusy ? "Génération…" : "Exporter en PDF"}
               </button>
             </div>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 16 }}>
               <div>
-                <label style={{ fontSize: 11, color: "#7C8892", display: "block", marginBottom: 4 }}>Du</label>
+                <label style={{ fontSize: 11, color: "#A3ADB6", display: "block", marginBottom: 4 }}>Du</label>
                 <input type="date" value={searchStart} onChange={(e) => setSearchStart(e.target.value)} style={{ background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: "8px 10px", colorScheme: "dark" }} />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: "#7C8892", display: "block", marginBottom: 4 }}>Au</label>
+                <label style={{ fontSize: 11, color: "#A3ADB6", display: "block", marginBottom: 4 }}>Au</label>
                 <input type="date" value={searchEnd} onChange={(e) => setSearchEnd(e.target.value)} style={{ background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: "8px 10px", colorScheme: "dark" }} />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: "#7C8892", display: "block", marginBottom: 4 }}>Type</label>
+                <label style={{ fontSize: 11, color: "#A3ADB6", display: "block", marginBottom: 4 }}>Type</label>
                 <select value={searchType} onChange={(e) => setSearchType(e.target.value)} style={{ background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: "8px 10px", colorScheme: "light" }}>
                   <option value="all" style={{ color: "#0A0D10", background: "#FFFFFF" }}>Tous types</option>
                   {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{v.label}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 11, color: "#7C8892", display: "block", marginBottom: 4 }}>Ligne</label>
+                <label style={{ fontSize: 11, color: "#A3ADB6", display: "block", marginBottom: 4 }}>Ligne</label>
                 <select value={searchLine} onChange={(e) => setSearchLine(e.target.value)} style={{ background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: "8px 10px", colorScheme: "light" }}>
                   <option value="all" style={{ color: "#0A0D10", background: "#FFFFFF" }}>Toutes lignes</option>
                   {Object.entries(LINES).map(([id, l]) => <option key={id} value={id} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{l.name}</option>)}
@@ -944,7 +964,7 @@ export default function Sentinelle() {
               </div>
               {(searchStart !== todayStr() || searchEnd !== todayStr() || searchType !== "all" || searchLine !== "all") && (
                 <div style={{ display: "flex", alignItems: "flex-end" }}>
-                  <button onClick={() => { setSearchStart(todayStr()); setSearchEnd(todayStr()); setSearchType("all"); setSearchLine("all"); }} style={{ background: "none", border: "1px solid #1E262D", color: "#5B6670", borderRadius: 6, padding: "8px 12px", fontSize: 12, cursor: "pointer" }}>
+                  <button onClick={() => { setSearchStart(todayStr()); setSearchEnd(todayStr()); setSearchType("all"); setSearchLine("all"); }} style={{ background: "none", border: "1px solid #1E262D", color: "#8F99A3", borderRadius: 6, padding: "8px 12px", fontSize: 12, cursor: "pointer" }}>
                     Réinitialiser
                   </button>
                 </div>
@@ -953,7 +973,7 @@ export default function Sentinelle() {
 
             <div style={{ fontSize: 14, marginBottom: 12 }}>
               <strong>{searchResults.length}</strong> signalement{searchResults.length > 1 ? "s" : ""} trouvé{searchResults.length > 1 ? "s" : ""}
-              <span style={{ color: "#5B6670" }}> — {Object.entries(TYPES).filter(([k]) => searchBreakdown[k] > 0).map(([k, v]) => `${searchBreakdown[k]} ${v.label.toLowerCase()}`).join(" · ") || "aucun détail"}</span>
+              <span style={{ color: "#8F99A3" }}> — {Object.entries(TYPES).filter(([k]) => searchBreakdown[k] > 0).map(([k, v]) => `${searchBreakdown[k]} ${v.label.toLowerCase()}`).join(" · ") || "aucun détail"}</span>
             </div>
 
             {searchResults.length > 0 && (
@@ -963,7 +983,7 @@ export default function Sentinelle() {
                     <span className="mono" style={{ fontSize: 10, background: LINES[s.ligne].color, color: LINES[s.ligne].dark ? "#fff" : "#0A0D10", borderRadius: 4, padding: "1px 5px" }}>{s.ligne}</span>
                     <span style={{ flex: 1 }}>{s.station} — {TYPES[s.type].label}</span>
                     <span className="mono" style={{ color: STATUTS[s.statut].color }}>{STATUTS[s.statut].label}</span>
-                    <span className="mono" style={{ color: "#5B6670" }}>{new Date(s.created_at).toLocaleDateString("fr-FR")} {fmtTime(new Date(s.created_at).getTime())}</span>
+                    <span className="mono" style={{ color: "#8F99A3" }}>{new Date(s.created_at).toLocaleDateString("fr-FR")} {fmtTime(new Date(s.created_at).getTime())}</span>
                   </div>
                 ))}
               </div>
@@ -971,7 +991,7 @@ export default function Sentinelle() {
           </div>
 
           <div style={{ flex: "1 1 320px", background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20 }}>
-            <div className="disp" style={{ fontSize: 14, color: "#5B6670", textTransform: "uppercase", marginBottom: 16 }}>Signalements par station</div>
+            <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase", marginBottom: 16 }}>Signalements par station</div>
             {Object.entries(statsStationCounts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([key, count]) => {
               const [lineId, station] = key.split("__");
               const max = Math.max(...Object.values(statsStationCounts));
@@ -979,7 +999,7 @@ export default function Sentinelle() {
                 <div key={key} style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                     <span><span className="mono" style={{ fontSize: 10, background: LINES[lineId].color, color: LINES[lineId].dark ? "#fff" : "#0A0D10", borderRadius: 4, padding: "1px 5px", marginRight: 6 }}>{lineId}</span>{station}</span>
-                    <span className="mono" style={{ color: "#7C8892" }}>{count}</span>
+                    <span className="mono" style={{ color: "#A3ADB6" }}>{count}</span>
                   </div>
                   <div style={{ height: 6, background: "#1E262D", borderRadius: 3 }}>
                     <div style={{ height: 6, width: `${(count / max) * 100}%`, background: "#FF5A2E", borderRadius: 3 }} />
@@ -987,33 +1007,33 @@ export default function Sentinelle() {
                 </div>
               );
             })}
-            {Object.keys(statsStationCounts).length === 0 && <div style={{ fontSize: 13, color: "#5B6670" }}>Pas de données sur cette période.</div>}
+            {Object.keys(statsStationCounts).length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Pas de données sur cette période.</div>}
           </div>
 
           <div style={{ flex: "1 1 280px", background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20 }}>
-            <div className="disp" style={{ fontSize: 14, color: "#5B6670", textTransform: "uppercase", marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
+            <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase", marginBottom: 16, display: "flex", alignItems: "center", gap: 6 }}>
               <Clock size={14} /> Créneaux horaires
             </div>
             {byHourBucket.map(([bucket, count]) => (
               <div key={bucket} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px solid #1E262D" }}>
                 <span className="mono">{bucket}</span>
-                <span style={{ color: "#7C8892" }}>{count} signalement{count > 1 ? "s" : ""}</span>
+                <span style={{ color: "#A3ADB6" }}>{count} signalement{count > 1 ? "s" : ""}</span>
               </div>
             ))}
-            {byHourBucket.length === 0 && <div style={{ fontSize: 13, color: "#5B6670" }}>Pas de données sur cette période.</div>}
+            {byHourBucket.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Pas de données sur cette période.</div>}
           </div>
 
           <div style={{ flex: "1 1 100%", minWidth: 0, background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20 }}>
-            <div className="disp" style={{ fontSize: 14, color: "#5B6670", textTransform: "uppercase", marginBottom: 4 }}>Carte de chaleur — station × heure</div>
-            <div style={{ fontSize: 12, color: "#5B6670", marginBottom: 16 }}>Top 10 stations sur la période, intensité par tranche horaire (0h–23h). Vient en complément des compteurs ci-dessus, ne les remplace pas.</div>
-            {heatmapData.rows.length === 0 && <div style={{ fontSize: 13, color: "#5B6670" }}>Pas de données sur cette période.</div>}
+            <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase", marginBottom: 4 }}>Carte de chaleur — station × heure</div>
+            <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 16 }}>Top 10 stations sur la période, intensité par tranche horaire (0h–23h). Vient en complément des compteurs ci-dessus, ne les remplace pas.</div>
+            {heatmapData.rows.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Pas de données sur cette période.</div>}
             {heatmapData.rows.length > 0 && (
               <>
                 <div style={{ overflowX: "auto", maxWidth: "100%" }}>
                   <div style={{ display: "grid", gridTemplateColumns: `150px repeat(24, 24px)`, gap: 3, alignItems: "center", minWidth: 150 + 24 * 27 }}>
                     <div />
                     {Array.from({ length: 24 }).map((_, h) => (
-                      <div key={`h-${h}`} className="mono" style={{ fontSize: 9, color: "#5B6670", textAlign: "center" }}>{h % 3 === 0 ? h : ""}</div>
+                      <div key={`h-${h}`} className="mono" style={{ fontSize: 9, color: "#8F99A3", textAlign: "center" }}>{h % 3 === 0 ? h : ""}</div>
                     ))}
                     {heatmapData.rows.map(({ key, hours }) => {
                       const [lineId, station] = key.split("__");
@@ -1041,7 +1061,7 @@ export default function Sentinelle() {
                   </div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 16, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 11, color: "#5B6670" }}>Intensité :</span>
+                  <span style={{ fontSize: 11, color: "#8F99A3" }}>Intensité :</span>
                   {[
                     { count: 0, label: "Aucun" },
                     { count: 1, label: "Modéré (1 fait)" },
@@ -1050,7 +1070,7 @@ export default function Sentinelle() {
                   ].map(({ count, label }) => {
                     const { bg } = heatColor(count);
                     return (
-                      <span key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#7C8892" }}>
+                      <span key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#A3ADB6" }}>
                         <span style={{ width: 14, height: 14, borderRadius: 3, background: bg, display: "inline-block" }} />
                         {label}
                       </span>
@@ -1062,13 +1082,13 @@ export default function Sentinelle() {
           </div>
 
           <div style={{ flex: "1 1 100%", background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20 }}>
-            <div className="disp" style={{ fontSize: 14, color: "#5B6670", textTransform: "uppercase", marginBottom: 4 }}>Récurrences détectées</div>
-            <div style={{ fontSize: 12, color: "#5B6670", marginBottom: 16 }}>Signalements probablement liés au même groupe : même station (toutes lignes confondues), descriptions partageant au moins 2 mots-clés.</div>
-            {clusters.length === 0 && <div style={{ fontSize: 13, color: "#5B6670" }}>Aucune récurrence détectée sur cette période.</div>}
+            <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase", marginBottom: 4 }}>Récurrences détectées</div>
+            <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 16 }}>Signalements probablement liés au même groupe : même station (toutes lignes confondues), descriptions partageant au moins 2 mots-clés.</div>
+            {clusters.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Aucune récurrence détectée sur cette période.</div>}
             {clusters.map((c, i) => (
               <div key={i} style={{ background: "#0A0D10", border: "1px solid #1E262D", borderLeft: "4px solid #FFC145", borderRadius: 8, padding: 14, marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>{c.station} <span style={{ fontWeight: 400, color: "#7C8892", fontSize: 13 }}>— {c.items.length} signalements liés</span></div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{c.station} <span style={{ fontWeight: 400, color: "#A3ADB6", fontSize: 13 }}>— {c.items.length} signalements liés</span></div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {c.sharedWords.map((w) => (
                       <span key={w} className="mono" style={{ fontSize: 10, background: "#FFC1451A", color: "#FFC145", border: "1px solid #FFC14555", borderRadius: 4, padding: "2px 7px" }}>{w}</span>
@@ -1078,11 +1098,11 @@ export default function Sentinelle() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {c.items.map((item, idx) => (
                     <div key={item.id} style={{ display: "flex", gap: 10, fontSize: 13, alignItems: "flex-start" }}>
-                      <span className="mono" style={{ fontSize: 10, color: "#5B6670", flexShrink: 0, paddingTop: 2 }}>{idx + 1}.</span>
+                      <span className="mono" style={{ fontSize: 10, color: "#8F99A3", flexShrink: 0, paddingTop: 2 }}>{idx + 1}.</span>
                       <span className="mono" style={{ fontSize: 9, background: LINES[item.ligne].color, color: LINES[item.ligne].dark ? "#fff" : "#0A0D10", borderRadius: 3, padding: "2px 5px", flexShrink: 0 }}>L{item.ligne}</span>
                       <span className="mono" style={{ fontSize: 9, fontWeight: 700, background: TYPES[item.type].color, color: "#0A0D10", borderRadius: 3, padding: "2px 5px", flexShrink: 0 }}>{TYPES[item.type].short}</span>
                       <span style={{ color: "#B4BCC4", flex: 1 }}>{item.description}</span>
-                      <span className="mono" style={{ fontSize: 11, color: "#5B6670", flexShrink: 0, whiteSpace: "nowrap" }}>{fmtDateTime(new Date(item.created_at).getTime())}</span>
+                      <span className="mono" style={{ fontSize: 11, color: "#8F99A3", flexShrink: 0, whiteSpace: "nowrap" }}>{fmtDateTime(new Date(item.created_at).getTime())}</span>
                     </div>
                   ))}
                 </div>
@@ -1098,34 +1118,34 @@ export default function Sentinelle() {
           <div style={{ background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 24, width: 420, maxWidth: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <span className="disp" style={{ fontSize: 20, fontWeight: 800, textTransform: "uppercase" }}>Nouveau signalement</span>
-              <X size={18} style={{ cursor: "pointer", color: "#5B6670" }} onClick={() => setShowForm(false)} />
+              <X size={18} style={{ cursor: "pointer", color: "#8F99A3" }} onClick={() => setShowForm(false)} />
             </div>
 
-            <label style={{ fontSize: 12, color: "#7C8892" }}>Ligne</label>
-            <select disabled={profile?.role === "agent_station"} value={form.line} onChange={(e) => setForm({ ...form, line: e.target.value, station: LINES[e.target.value].stations[0] })} style={{ width: "100%", background: profile?.role === "agent_station" ? "#161B21" : "#0A0D10", color: profile?.role === "agent_station" ? "#5B6670" : "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 14, colorScheme: "light" }}>
+            <label style={{ fontSize: 12, color: "#A3ADB6" }}>Ligne</label>
+            <select disabled={profile?.role === "agent_station"} value={form.line} onChange={(e) => setForm({ ...form, line: e.target.value, station: LINES[e.target.value].stations[0] })} style={{ width: "100%", background: profile?.role === "agent_station" ? "#161B21" : "#0A0D10", color: profile?.role === "agent_station" ? "#8F99A3" : "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 14, colorScheme: "light" }}>
               {Object.entries(LINES).map(([id, l]) => <option key={id} value={id} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{l.name}</option>)}
             </select>
 
-            <label style={{ fontSize: 12, color: "#7C8892" }}>Station</label>
+            <label style={{ fontSize: 12, color: "#A3ADB6" }}>Station</label>
             <select value={form.station} onChange={(e) => setForm({ ...form, station: e.target.value })} style={{ width: "100%", background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 14 }}>
               {LINES[form.line].stations.map((s) => <option key={s} value={s} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{s}</option>)}
             </select>
 
-            <label style={{ fontSize: 12, color: "#7C8892" }}>Type</label>
+            <label style={{ fontSize: 12, color: "#A3ADB6" }}>Type</label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4, marginBottom: 14 }}>
               {Object.entries(TYPES).map(([k, v]) => (
-                <button type="button" key={k} onClick={() => setForm({ ...form, type: k })} style={{ padding: "8px 10px", borderRadius: 6, border: form.type === k ? `1px solid ${v.color}` : "1px solid #1E262D", background: form.type === k ? `${v.color}22` : "#0A0D10", color: form.type === k ? v.color : "#7C8892", fontSize: 13, cursor: "pointer" }}>
+                <button type="button" key={k} onClick={() => setForm({ ...form, type: k })} style={{ padding: "8px 10px", borderRadius: 6, border: form.type === k ? `1px solid ${v.color}` : "1px solid #1E262D", background: form.type === k ? `${v.color}22` : "#0A0D10", color: form.type === k ? v.color : "#A3ADB6", fontSize: 13, cursor: "pointer" }}>
                   {v.label}
                 </button>
               ))}
             </div>
 
-            <label style={{ fontSize: 12, color: "#7C8892" }}>Nombre de personnes</label>
+            <label style={{ fontSize: 12, color: "#A3ADB6" }}>Nombre de personnes</label>
             <input type="number" min={1} value={form.nb} onChange={(e) => setForm({ ...form, nb: e.target.value })} style={{ width: "100%", background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 14 }} />
 
-            <label style={{ fontSize: 12, color: "#7C8892" }}>Description opérationnelle</label>
+            <label style={{ fontSize: 12, color: "#A3ADB6" }}>Description opérationnelle</label>
             <textarea value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} placeholder="Vêtements, position précise, comportement observé..." rows={3} style={{ width: "100%", background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 6, resize: "vertical" }} />
-            <div style={{ fontSize: 11, color: "#5B6670", marginBottom: 6 }}>Signalé par {profile ? `${profile.equipe} (${profile.nom})` : "…"}</div>
+            <div style={{ fontSize: 11, color: "#8F99A3", marginBottom: 6 }}>Signalé par {profile ? `${profile.equipe} (${profile.nom})` : "…"}</div>
             {formError && <div style={{ fontSize: 12, color: "#FF5A2E", marginBottom: 8 }}>{formError}</div>}
 
             <button type="button" onClick={submitForm} style={{ width: "100%", background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: 11, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
@@ -1145,14 +1165,14 @@ export default function Sentinelle() {
             <div onClick={(e) => e.stopPropagation()} style={{ background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20, width: 380, maxWidth: "100%" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <span className="disp" style={{ fontSize: 18, fontWeight: 800 }}>{pin.station}</span>
-                <X size={18} style={{ cursor: "pointer", color: "#5B6670" }} onClick={() => setSelectedPin(null)} />
+                <X size={18} style={{ cursor: "pointer", color: "#8F99A3" }} onClick={() => setSelectedPin(null)} />
               </div>
               <div style={{ fontSize: 13, color: "#B4BCC4", marginBottom: 10 }}>{pin.description}</div>
-              <div className="mono" style={{ fontSize: 11, color: "#5B6670", marginBottom: 14 }}>
+              <div className="mono" style={{ fontSize: 11, color: "#8F99A3", marginBottom: 14 }}>
                 {LINES[pin.ligne].name} · {TYPES[pin.type].short} — {TYPES[pin.type].label} · {pin.nb_personnes} pers. · {equipeLabel(pin)} · {fmtTime(new Date(pin.created_at).getTime())}
               </div>
 
-              <label style={{ fontSize: 12, color: "#7C8892", display: "flex", alignItems: "center", gap: 6 }}>
+              <label style={{ fontSize: 12, color: "#A3ADB6", display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 15, height: 15, borderRadius: "50%", background: statutInfo.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <StatutIcon size={9} color="#0A0D10" />
                 </div>
@@ -1167,10 +1187,16 @@ export default function Sentinelle() {
               )}
 
               {pin.statut !== "nouveau" && pin.statut_agent && (
-                <div style={{ fontSize: 12, color: "#7C8892" }}>
+                <div style={{ fontSize: 12, color: "#A3ADB6" }}>
                   {statutInfo.action} <span style={{ color: "#E8ECEF" }}>{pin.statut_agent.equipe} ({pin.statut_agent.nom})</span>
                   {pin.statut_updated_at && <> · {fmtTime(new Date(pin.statut_updated_at).getTime())}</>}
                 </div>
+              )}
+
+              {profile?.role === "admin" && (
+                <button onClick={() => deleteSignalement(pin.id)} style={{ width: "100%", background: "none", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 6, padding: 9, marginTop: 14, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Trash2 size={14} /> Supprimer ce signalement
+                </button>
               )}
             </div>
           </div>
