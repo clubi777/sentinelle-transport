@@ -13,6 +13,17 @@ const ROLES = {
   admin: "Administrateur",
 };
 
+// Couleur distincte par rôle pour les badges — le rouge/orange reste réservé
+// aux actions de suppression, pour ne pas créer de confusion visuelle.
+const ROLE_COLORS = {
+  agent_gpsr_civil: "#5B9BD5",
+  agent_gpsr_tenue: "#23C9A7",
+  agent_station: "#A78BFA",
+  operateur_video: "#38BDF8",
+  autre: "#8F99A3",
+  admin: "#FFC145",
+};
+
 // URL de l'Edge Function — remplace <PROJECT_REF> une fois déployée
 // (supabase functions deploy manage-agents)
 const FUNCTION_URL = "https://ltqpxyysvjcrmsvivoib.supabase.co/functions/v1/rapid-responder";
@@ -82,7 +93,7 @@ export default function AdminPanel({ onClose }) {
             <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr 1.3fr 0.6fr 0.6fr 100px", gap: 10, padding: "12px 16px", borderBottom: "1px solid #1E262D", alignItems: "center", fontSize: 13 }}>
               <span className="mono">{a.matricule}</span>
               <span style={{ color: "#B4BCC4" }}>{a.equipe}</span>
-              <span style={{ color: "#B4BCC4" }}>{ROLES[a.role] || a.role}</span>
+              <span style={{ color: ROLE_COLORS[a.role] || "#B4BCC4", fontWeight: 600 }}>{ROLES[a.role] || a.role}</span>
               <span className="mono" style={{ color: "#A3ADB6" }}>{a.role === "agent_station" ? (a.ligne_affectee || "—") : "—"}</span>
               <span style={{ color: a.actif ? "#23C9A7" : "#8F99A3" }}>{a.actif ? "Oui" : "Non"}</span>
               <div style={{ display: "flex", gap: 8 }}>
@@ -100,7 +111,7 @@ export default function AdminPanel({ onClose }) {
             <div key={a.id} style={{ padding: 14, borderBottom: "1px solid #1E262D" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <span className="mono" style={{ fontSize: 16, fontWeight: 700 }}>{a.matricule}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, background: "#FF5A2E22", color: "#FF5A2E", border: "1px solid #FF5A2E55", borderRadius: 4, padding: "3px 8px" }}>{ROLES[a.role] || a.role}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, background: `${ROLE_COLORS[a.role] || "#8F99A3"}22`, color: ROLE_COLORS[a.role] || "#8F99A3", border: `1px solid ${ROLE_COLORS[a.role] || "#8F99A3"}55`, borderRadius: 4, padding: "3px 8px" }}>{ROLES[a.role] || a.role}</span>
               </div>
               <div style={{ fontSize: 13, color: "#B4BCC4", marginBottom: 4 }}>{a.equipe}</div>
               <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#8F99A3", marginBottom: 12 }}>
