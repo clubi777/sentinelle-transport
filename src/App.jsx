@@ -703,9 +703,12 @@ export default function Sentinelle() {
         ::selection { background: #FF5A2E; color: #0A0D10; }
         select option { color: #0A0D10; }
         .legend-toggle-btn { display: none; }
+        .agents-cards { display: none; }
         @media (max-width: 760px) {
           .legend-toggle-btn { display: inline-flex !important; }
           .legend-body.collapsed { display: none !important; }
+          .agents-table { display: none !important; }
+          .agents-cards { display: block !important; }
         }
       `}</style>
 
