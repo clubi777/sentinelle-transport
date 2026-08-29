@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { AlertTriangle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Bell, BellOff, Copy, WifiOff, Trash2 } from "lucide-react";
+import { AlertTriangle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Bell, BellOff, Copy, WifiOff, Trash2, Phone, Search, Navigation } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import AdminPanel from "./AdminPanel";
 import jsPDF from "jspdf";
@@ -44,6 +44,19 @@ const STATUTS = {
   faux_positif: { label: "Faux positif", color: "#8F99A3", icon: X, action: "Classé faux positif par" },
 };
 
+// Niveau de gravité, configurable indépendamment du type — sert à faire
+// remonter les urgences en tête du fil. "rank" plus élevé = plus prioritaire.
+const PRIORITES = {
+  normale: { label: "Normale", short: "NORM.", color: "#8F99A3", rank: 0 },
+  urgente: { label: "Urgente", short: "URGENT", color: "#FFC145", rank: 1 },
+  critique: { label: "Critique", short: "CRITIQUE", color: "#DC2626", rank: 2 },
+};
+
+// Numéros d'appel rapide affichés sur les signalements graves — à adapter
+// aux numéros réels du PC de ta structure.
+const PC_PHONE = "0100000000";
+const POLICE_PHONE = "17";
+
 function freshness(tsMs) {
   const mins = (Date.now() - tsMs) / 60000;
   if (mins < 15) return { label: "< 15 min", color: "#FF5A2E", pulse: true };
@@ -64,18 +77,18 @@ function fmtDateTime(tsMs) {
 // plutôt qu'une liste de paires — beaucoup plus lisible dès qu'il y a plus
 // de 2 signalements pour le même fait.
 function computeRecurrence(signalements) {
-  const byStation = {};
+  const byLigne = {};
   for (const s of signalements) {
     const words = new Set(s.description.toLowerCase().split(/[^a-zàâçéèêëîïôûùüÿñæœ]+/).filter((w) => w.length > 3));
-    // Regroupement par station uniquement : une station peut être desservie par
-    // plusieurs lignes (correspondances), et un même groupe peut y sévir quelle
-    // que soit la ligne sur laquelle chaque agent l'a constaté.
-    if (!byStation[s.station]) byStation[s.station] = [];
-    byStation[s.station].push({ ...s, words });
+    // Regroupement par ligne : un même groupe/individu qui se déplace change
+    // de station mais reste souvent sur la même ligne — utile notamment avec
+    // le suivi de position en direct des opérateurs vidéo.
+    if (!byLigne[s.ligne]) byLigne[s.ligne] = [];
+    byLigne[s.ligne].push({ ...s, words });
   }
 
   const result = [];
-  Object.entries(byStation).forEach(([station, items]) => {
+  Object.entries(byLigne).forEach(([ligne, items]) => {
     if (items.length < 2) return;
     const parent = items.map((_, i) => i);
     const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
@@ -101,7 +114,7 @@ function computeRecurrence(signalements) {
       const groupItems = indices.map((i) => items[i]).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
       const sharedWords = new Set();
       indices.forEach((i) => indices.forEach((j) => { if (i < j && edgeWords[`${i}-${j}`]) edgeWords[`${i}-${j}`].forEach((w) => sharedWords.add(w)); }));
-      result.push({ station, items: groupItems, sharedWords: [...sharedWords] });
+      result.push({ ligne, items: groupItems, sharedWords: [...sharedWords] });
     });
   });
   return result;
@@ -185,7 +198,7 @@ export default function Sentinelle() {
     if (remaining.length < q.length) fetchSignalements();
   }
   const [selectedPin, setSelectedPin] = useState(null);
-  const [form, setForm] = useState({ line: "1", station: LINES["1"].stations[7], type: "pickpocket", nb: 1, desc: "" });
+  const [form, setForm] = useState({ line: "1", station: LINES["1"].stations[7], type: "pickpocket", priorite: "normale", nb: 1, desc: "" });
   const [formError, setFormError] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
 
@@ -234,7 +247,7 @@ export default function Sentinelle() {
 
   function duplicateSignalement(s) {
     setActiveLine(s.ligne);
-    setForm({ line: s.ligne, station: s.station, type: s.type, nb: s.nb_personnes, desc: s.description });
+    setForm({ line: s.ligne, station: s.station, type: s.type, priorite: s.priorite || "normale", nb: s.nb_personnes, desc: s.description });
     setShowForm(true);
   }
 
@@ -374,6 +387,22 @@ export default function Sentinelle() {
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }, [signalements]);
 
+  // ---- Recherche / filtre / tri par priorité pour le fil des signalements ----
+  const [filSearch, setFilSearch] = useState("");
+  const [filTypeFilter, setFilTypeFilter] = useState("tous");
+  const filFeed = useMemo(() => {
+    const q = filSearch.trim().toLowerCase();
+    return last24h
+      .filter((s) => filTypeFilter === "tous" || s.type === filTypeFilter)
+      .filter((s) => !q || s.station.toLowerCase().includes(q) || s.description.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const rankA = PRIORITES[a.priorite || "normale"]?.rank ?? 0;
+        const rankB = PRIORITES[b.priorite || "normale"]?.rank ?? 0;
+        if (rankA !== rankB) return rankB - rankA; // priorité la plus haute en premier
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+  }, [last24h, filSearch, filTypeFilter]);
+
   const lineSignalements = useMemo(() => last24h.filter((s) => s.ligne === activeLine), [last24h, activeLine]);
 
   const liveStationCounts = useMemo(() => {
@@ -459,6 +488,7 @@ export default function Sentinelle() {
       ligne: form.line,
       station: form.station,
       type: form.type,
+      priorite: form.priorite || "normale",
       nb_personnes: Number(form.nb) || 1,
       description: form.desc.trim(),
       agent_id: session.user.id,
@@ -513,6 +543,27 @@ export default function Sentinelle() {
     if (error) setDataError("Erreur à la suppression : " + error.message);
     else {
       setSelectedPin(null);
+      fetchSignalements();
+    }
+  }
+
+  // ---- Suivi de position en direct — réservé aux opérateurs vidéo pour l'instant ----
+  const [trackingId, setTrackingId] = useState(null);
+  const [trackStation, setTrackStation] = useState("");
+
+  async function updatePosition(s) {
+    if (!trackStation) return;
+    const entry = { ligne: s.ligne, station: trackStation, at: new Date().toISOString(), par: profile?.equipe ? `${profile.equipe} (${profile.nom})` : profile?.matricule };
+    const trajectoire = [...(s.trajectoire || []), entry];
+    const { error } = await supabase.from("signalements").update({
+      trajectoire,
+      derniere_position_ligne: s.ligne,
+      derniere_position_station: trackStation,
+      derniere_position_at: entry.at,
+    }).eq("id", s.id);
+    if (error) setDataError("Erreur de mise à jour de la position : " + error.message);
+    else {
+      setTrackingId(null);
       fetchSignalements();
     }
   }
@@ -619,14 +670,14 @@ export default function Sentinelle() {
       doc.text("Récurrences détectées", left, y);
       autoTable(doc, {
         startY: y + 4,
-        head: [["Groupe", "Station", "Mots communs", "Ligne", "Description", "Date/heure"]],
+        head: [["Groupe", "Ligne", "Mots communs", "Station", "Description", "Date/heure"]],
         body: clusters.length > 0
           ? clusters.flatMap((c, gi) =>
               c.items.map((item, idx) => [
                 idx === 0 ? `#${gi + 1}` : "",
-                idx === 0 ? c.station : "",
+                idx === 0 ? LINES[c.ligne].name : "",
                 idx === 0 ? c.sharedWords.join(", ") : "",
-                `L${item.ligne}`,
+                item.station,
                 item.description.slice(0, 55),
                 fmtDateTime(new Date(item.created_at).getTime()),
               ])
@@ -740,7 +791,7 @@ export default function Sentinelle() {
             </button>
           )}
           <button onClick={signOut} style={{ background: "none", border: "1px solid #1E262D", color: "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Fin de service</button>
-          <button onClick={() => { setForm({ line: activeLine, station: LINES[activeLine].stations[0], type: "pickpocket", nb: 1, desc: "" }); setShowForm(true); }} style={{ background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => { setForm({ line: activeLine, station: LINES[activeLine].stations[0], type: "pickpocket", priorite: "normale", nb: 1, desc: "" }); setShowForm(true); }} style={{ background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <AlertTriangle size={16} /> Signaler
           </button>
         </div>
@@ -871,19 +922,41 @@ export default function Sentinelle() {
                 </div>
                 <div style={{ fontSize: 11, color: "#8F99A3", marginTop: 2 }}>Signalements des dernières 24 heures</div>
               </div>
-              {last24h.map((s) => {
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ position: "relative", flex: "1 1 160px" }}>
+                  <Search size={13} style={{ position: "absolute", left: 9, top: 9, color: "#8F99A3" }} />
+                  <input
+                    value={filSearch}
+                    onChange={(e) => setFilSearch(e.target.value)}
+                    placeholder="Station, mot-clé…"
+                    style={{ width: "100%", background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: "7px 9px 7px 28px", fontSize: 12, boxSizing: "border-box" }}
+                  />
+                </div>
+                <select value={filTypeFilter} onChange={(e) => setFilTypeFilter(e.target.value)} style={{ background: "#0A0D10", color: "#E8ECEF", border: "1px solid #1E262D", borderRadius: 6, padding: "7px 8px", fontSize: 12 }}>
+                  <option value="tous" style={{ color: "#0A0D10", background: "#FFFFFF" }}>Tous les types</option>
+                  {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{v.label}</option>)}
+                </select>
+              </div>
+
+              {filFeed.map((s) => {
                 const tsMs = new Date(s.created_at).getTime();
                 const fresh = freshness(tsMs);
                 const Icon = TYPES[s.type].icon;
                 const statutInfo = STATUTS[s.statut];
                 const StatutIcon = statutInfo.icon;
+                const priosInfo = PRIORITES[s.priorite || "normale"];
+                const showCall = s.type === "agression" || priosInfo.rank === 2;
                 return (
-                  <div key={s.id} style={{ background: "#12171C", border: "1px solid #1E262D", borderLeft: `4px solid ${statutInfo.color}`, borderRadius: 8, padding: 12 }}>
+                  <div key={s.id} style={{ background: "#12171C", border: "1px solid #1E262D", borderLeft: `4px solid ${priosInfo.rank === 2 ? priosInfo.color : statutInfo.color}`, borderRadius: 8, padding: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                         <span className="mono" style={{ fontSize: 10, background: LINES[s.ligne].color, color: LINES[s.ligne].dark ? "#fff" : "#0A0D10", borderRadius: 4, padding: "1px 5px" }}>{s.ligne}</span>
                         <Icon size={15} color={TYPES[s.type].color} />
                         <span title={TYPES[s.type].label} className="mono" style={{ fontSize: 9, fontWeight: 700, background: TYPES[s.type].color, color: "#0A0D10", borderRadius: 4, padding: "2px 6px" }}>{TYPES[s.type].short}</span>
+                        {priosInfo.rank > 0 && (
+                          <span title={`Priorité ${priosInfo.label}`} className="mono" style={{ fontSize: 9, fontWeight: 700, background: `${priosInfo.color}22`, color: priosInfo.color, border: `1px solid ${priosInfo.color}`, borderRadius: 4, padding: "2px 6px" }}>{priosInfo.short}</span>
+                        )}
                         <span style={{ fontWeight: 600, fontSize: 14 }}>{s.station}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -894,17 +967,32 @@ export default function Sentinelle() {
                       </div>
                     </div>
                     <div style={{ fontSize: 13, color: "#B4BCC4", marginTop: 6, lineHeight: 1.4 }}>{s.description}</div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                    {showCall && (
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <a href={`tel:${PC_PHONE}`} style={{ flex: 1, background: "#DC262622", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 6, padding: "7px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, textDecoration: "none" }}>
+                          <Phone size={13} /> Appeler PC
+                        </a>
+                        <a href={`tel:${POLICE_PHONE}`} style={{ flex: 1, background: "#DC262622", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 6, padding: "7px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, textDecoration: "none" }}>
+                          <Phone size={13} /> Police (17)
+                        </a>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexWrap: "wrap", rowGap: 8, justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                       <span className="mono" style={{ fontSize: 11, color: "#8F99A3" }}>
                         <Users size={11} style={{ verticalAlign: -2, marginRight: 3 }} />{s.nb_personnes} · {equipeLabel(s)} · {fmtTime(tsMs)}
                       </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
                         <button onClick={() => duplicateSignalement(s)} title="Dupliquer ce signalement — pré-remplit un nouveau signalement avec les mêmes infos" style={{ background: "none", border: "1px solid #1E262D", color: "#A3ADB6", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                           <Copy size={11} /> Dupliquer
                         </button>
                         {profile?.role === "admin" && (
                           <button onClick={() => deleteSignalement(s.id)} title="Supprimer définitivement ce signalement (admin)" style={{ background: "none", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                             <Trash2 size={11} />
+                          </button>
+                        )}
+                        {profile?.role === "operateur_video" && (
+                          <button onClick={() => { setTrackingId(trackingId === s.id ? null : s.id); setTrackStation(s.derniere_position_station || s.station); }} title="Mettre à jour la position suivie de cet individu" style={{ background: trackingId === s.id ? "#38BDF822" : "none", border: "1px solid #38BDF8", color: "#38BDF8", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                            <Navigation size={11} /> Suivre
                           </button>
                         )}
                         {canEditStatut ? (
@@ -915,7 +1003,24 @@ export default function Sentinelle() {
                           <span className="mono" style={{ fontSize: 11, color: statutInfo.color, border: `1px solid ${statutInfo.color}`, borderRadius: 4, padding: "3px 6px" }}>{statutInfo.label}</span>
                         )}
                       </div>
-                    </div>                    {s.statut !== "nouveau" && s.statut_agent && (
+                    </div>
+                    {trackingId === s.id && (
+                      <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+                        <select value={trackStation} onChange={(e) => setTrackStation(e.target.value)} style={{ flex: 1, background: "#0A0D10", color: "#E8ECEF", border: "1px solid #38BDF8", borderRadius: 4, padding: "5px 6px", fontSize: 12, colorScheme: "light" }}>
+                          {LINES[s.ligne].stations.map((st) => <option key={st} value={st} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{st}</option>)}
+                        </select>
+                        <button onClick={() => updatePosition(s)} style={{ background: "#38BDF8", color: "#0A0D10", border: "none", borderRadius: 4, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>OK</button>
+                      </div>
+                    )}
+                    {s.derniere_position_station && (
+                      <div style={{ fontSize: 11, color: "#38BDF8", marginTop: 6 }}>
+                        <Navigation size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
+                        Dernière position suivie : <span style={{ fontWeight: 600 }}>{s.derniere_position_station}</span>
+                        {s.derniere_position_at && <> · {fmtTime(new Date(s.derniere_position_at).getTime())}</>}
+                        {s.trajectoire?.length > 1 && <span className="mono" style={{ color: "#8F99A3" }}> · {s.trajectoire.length} positions enregistrées</span>}
+                      </div>
+                    )}
+                    {s.statut !== "nouveau" && s.statut_agent && (
                       <div style={{ fontSize: 11, color: "#8F99A3", marginTop: 6 }}>
                         {statutInfo.action} <span style={{ color: "#B4BCC4" }}>{canEditStatut ? `${s.statut_agent.equipe} (${s.statut_agent.nom})` : s.statut_agent.equipe}</span>
                         {s.statut_updated_at && <> · {fmtTime(new Date(s.statut_updated_at).getTime())}</>}
@@ -924,7 +1029,7 @@ export default function Sentinelle() {
                   </div>
                 );
               })}
-              {last24h.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Aucun signalement au cours des dernières 24h.</div>}
+              {filFeed.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Aucun signalement ne correspond.</div>}
             </div>
           </div>
         </>
@@ -1081,12 +1186,15 @@ export default function Sentinelle() {
 
           <div style={{ flex: "1 1 100%", background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20 }}>
             <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase", marginBottom: 4 }}>Récurrences détectées</div>
-            <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 16 }}>Signalements probablement liés au même groupe : même station (toutes lignes confondues), descriptions partageant au moins 2 mots-clés.</div>
+            <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 16 }}>Signalements probablement liés au même groupe : même ligne (toutes stations confondues, utile pour un groupe qui se déplace), descriptions partageant au moins 2 mots-clés.</div>
             {clusters.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Aucune récurrence détectée sur cette période.</div>}
             {clusters.map((c, i) => (
               <div key={i} style={{ background: "#0A0D10", border: "1px solid #1E262D", borderLeft: "4px solid #FFC145", borderRadius: 8, padding: 14, marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>{c.station} <span style={{ fontWeight: 400, color: "#A3ADB6", fontSize: 13 }}>— {c.items.length} signalements liés</span></div>
+                  <div style={{ fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="mono" style={{ fontSize: 11, background: LINES[c.ligne].color, color: LINES[c.ligne].dark ? "#fff" : "#0A0D10", borderRadius: 4, padding: "2px 7px" }}>{LINES[c.ligne].name}</span>
+                    <span style={{ fontWeight: 400, color: "#A3ADB6", fontSize: 13 }}>— {c.items.length} signalements liés</span>
+                  </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {c.sharedWords.map((w) => (
                       <span key={w} className="mono" style={{ fontSize: 10, background: "#FFC1451A", color: "#FFC145", border: "1px solid #FFC14555", borderRadius: 4, padding: "2px 7px" }}>{w}</span>
@@ -1095,11 +1203,11 @@ export default function Sentinelle() {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {c.items.map((item, idx) => (
-                    <div key={item.id} style={{ display: "flex", gap: 10, fontSize: 13, alignItems: "flex-start" }}>
+                    <div key={item.id} style={{ display: "flex", gap: 10, fontSize: 13, alignItems: "flex-start", flexWrap: "wrap" }}>
                       <span className="mono" style={{ fontSize: 10, color: "#8F99A3", flexShrink: 0, paddingTop: 2 }}>{idx + 1}.</span>
-                      <span className="mono" style={{ fontSize: 9, background: LINES[item.ligne].color, color: LINES[item.ligne].dark ? "#fff" : "#0A0D10", borderRadius: 3, padding: "2px 5px", flexShrink: 0 }}>L{item.ligne}</span>
+                      <span style={{ fontWeight: 600, flexShrink: 0 }}>{item.station}</span>
                       <span className="mono" style={{ fontSize: 9, fontWeight: 700, background: TYPES[item.type].color, color: "#0A0D10", borderRadius: 3, padding: "2px 5px", flexShrink: 0 }}>{TYPES[item.type].short}</span>
-                      <span style={{ color: "#B4BCC4", flex: 1 }}>{item.description}</span>
+                      <span style={{ color: "#B4BCC4", flex: 1, minWidth: 120 }}>{item.description}</span>
                       <span className="mono" style={{ fontSize: 11, color: "#8F99A3", flexShrink: 0, whiteSpace: "nowrap" }}>{fmtDateTime(new Date(item.created_at).getTime())}</span>
                     </div>
                   ))}
@@ -1133,6 +1241,15 @@ export default function Sentinelle() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4, marginBottom: 14 }}>
               {Object.entries(TYPES).map(([k, v]) => (
                 <button type="button" key={k} onClick={() => setForm({ ...form, type: k })} style={{ padding: "8px 10px", borderRadius: 6, border: form.type === k ? `1px solid ${v.color}` : "1px solid #1E262D", background: form.type === k ? `${v.color}22` : "#0A0D10", color: form.type === k ? v.color : "#A3ADB6", fontSize: 13, cursor: "pointer" }}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+
+            <label style={{ fontSize: 12, color: "#A3ADB6" }}>Priorité</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 4, marginBottom: 14 }}>
+              {Object.entries(PRIORITES).map(([k, v]) => (
+                <button type="button" key={k} onClick={() => setForm({ ...form, priorite: k })} style={{ padding: "8px 10px", borderRadius: 6, border: form.priorite === k ? `1px solid ${v.color}` : "1px solid #1E262D", background: form.priorite === k ? `${v.color}22` : "#0A0D10", color: form.priorite === k ? v.color : "#A3ADB6", fontSize: 13, fontWeight: form.priorite === k ? 700 : 400, cursor: "pointer" }}>
                   {v.label}
                 </button>
               ))}
