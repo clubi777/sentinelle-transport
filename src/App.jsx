@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { AlertTriangle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Bell, BellOff, Copy, WifiOff, Trash2, Phone, Search, Navigation } from "lucide-react";
+import { AlertTriangle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Bell, BellOff, Copy, WifiOff, Trash2, Phone, Search, Navigation, Pencil } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import AdminPanel from "./AdminPanel";
 import jsPDF from "jspdf";
@@ -52,10 +52,9 @@ const PRIORITES = {
   critique: { label: "Critique", short: "CRITIQUE", color: "#DC2626", rank: 2 },
 };
 
-// Numéros d'appel rapide affichés sur les signalements graves — à adapter
-// aux numéros réels du PC de ta structure.
-const PC_PHONE = "0659017217";
-const POLICE_PHONE = "00";
+// Numéro d'appel rapide du PC — affiché sur chaque signalement, à adapter
+// au numéro réel du PC de ta structure.
+const PC_PHONE = "0100000000";
 
 function freshness(tsMs) {
   const mins = (Date.now() - tsMs) / 60000;
@@ -166,6 +165,7 @@ export default function Sentinelle() {
   const [searchLine, setSearchLine] = useState("all");
   const [tab, setTab] = useState("carte");
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [showLegend, setShowLegend] = useState(false);
   // ---- Mode hors-ligne basique : file d'attente locale, envoi auto au retour réseau ----
   const OFFLINE_QUEUE_KEY = "sentinelle_offline_queue";
@@ -247,8 +247,24 @@ export default function Sentinelle() {
 
   function duplicateSignalement(s) {
     setActiveLine(s.ligne);
+    setEditingId(null);
     setForm({ line: s.ligne, station: s.station, type: s.type, priorite: s.priorite || "normale", nb: s.nb_personnes, desc: s.description });
     setShowForm(true);
+  }
+
+  function editSignalement(s) {
+    setActiveLine(s.ligne);
+    setEditingId(s.id);
+    setForm({ line: s.ligne, station: s.station, type: s.type, priorite: s.priorite || "normale", nb: s.nb_personnes, desc: s.description });
+    setShowForm(true);
+  }
+
+  // Un agent de station ne peut modifier que les signalements de sa propre
+  // ligne (même logique que pour la création) ; les autres profils, qui ont
+  // une vision plus large, peuvent modifier tout ce qu'ils voient.
+  function canEditSignalement(s) {
+    if (profile?.role === "agent_station") return s.ligne === profile.ligne_affectee;
+    return true;
   }
 
   function toggleNotifications() {
@@ -491,8 +507,24 @@ export default function Sentinelle() {
       priorite: form.priorite || "normale",
       nb_personnes: Number(form.nb) || 1,
       description: form.desc.trim(),
-      agent_id: session.user.id,
     };
+
+    if (editingId) {
+      const { error } = await supabase.from("signalements").update(payload).eq("id", editingId);
+      if (error) {
+        setFormError("Erreur à la modification : " + error.message);
+        return;
+      }
+      setEditingId(null);
+      setForm({ ...form, desc: "", nb: 1 });
+      setShowForm(false);
+      setActiveLine(form.line);
+      setTab("carte");
+      fetchSignalements();
+      return;
+    }
+
+    payload.agent_id = session.user.id;
 
     if (!navigator.onLine) {
       queueOffline(payload);
@@ -791,7 +823,7 @@ export default function Sentinelle() {
             </button>
           )}
           <button onClick={signOut} style={{ background: "none", border: "1px solid #1E262D", color: "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Fin de service</button>
-          <button onClick={() => { setForm({ line: activeLine, station: LINES[activeLine].stations[0], type: "pickpocket", priorite: "normale", nb: 1, desc: "" }); setShowForm(true); }} style={{ background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => { setEditingId(null); setForm({ line: activeLine, station: LINES[activeLine].stations[0], type: "pickpocket", priorite: "normale", nb: 1, desc: "" }); setShowForm(true); }} style={{ background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
             <AlertTriangle size={16} /> Signaler
           </button>
         </div>
@@ -946,7 +978,6 @@ export default function Sentinelle() {
                 const statutInfo = STATUTS[s.statut];
                 const StatutIcon = statutInfo.icon;
                 const priosInfo = PRIORITES[s.priorite || "normale"];
-                const showCall = s.type === "agression" || priosInfo.rank === 2;
                 return (
                   <div key={s.id} style={{ background: "#12171C", border: "1px solid #1E262D", borderLeft: `4px solid ${priosInfo.rank === 2 ? priosInfo.color : statutInfo.color}`, borderRadius: 8, padding: 12 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8 }}>
@@ -967,21 +998,21 @@ export default function Sentinelle() {
                       </div>
                     </div>
                     <div style={{ fontSize: 13, color: "#B4BCC4", marginTop: 6, lineHeight: 1.4 }}>{s.description}</div>
-                    {showCall && (
-                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                        <a href={`tel:${PC_PHONE}`} style={{ flex: 1, background: "#DC262622", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 6, padding: "7px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, textDecoration: "none" }}>
-                          <Phone size={13} /> Appeler PC
-                        </a>
-                        <a href={`tel:${POLICE_PHONE}`} style={{ flex: 1, background: "#DC262622", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 6, padding: "7px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, textDecoration: "none" }}>
-                          <Phone size={13} /> Police (17)
-                        </a>
-                      </div>
-                    )}
+                    <div style={{ marginTop: 10 }}>
+                      <a href={`tel:${PC_PHONE}`} style={{ display: "flex", background: "#DC262622", border: "1px solid #DC2626", color: "#DC2626", borderRadius: 6, padding: "7px 0", fontSize: 12, fontWeight: 700, cursor: "pointer", alignItems: "center", justifyContent: "center", gap: 5, textDecoration: "none" }}>
+                        <Phone size={13} /> Appeler PC
+                      </a>
+                    </div>
                     <div style={{ display: "flex", flexWrap: "wrap", rowGap: 8, justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
                       <span className="mono" style={{ fontSize: 11, color: "#8F99A3" }}>
                         <Users size={11} style={{ verticalAlign: -2, marginRight: 3 }} />{s.nb_personnes} · {equipeLabel(s)} · {fmtTime(tsMs)}
                       </span>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+                        {canEditSignalement(s) && (
+                          <button onClick={() => editSignalement(s)} title="Modifier ce signalement" style={{ background: "none", border: "1px solid #1E262D", color: "#A3ADB6", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                            <Pencil size={11} /> Modifier
+                          </button>
+                        )}
                         <button onClick={() => duplicateSignalement(s)} title="Dupliquer ce signalement — pré-remplit un nouveau signalement avec les mêmes infos" style={{ background: "none", border: "1px solid #1E262D", color: "#A3ADB6", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                           <Copy size={11} /> Dupliquer
                         </button>
@@ -1223,8 +1254,8 @@ export default function Sentinelle() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 30, padding: 16 }}>
           <div style={{ background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 24, width: 420, maxWidth: "100%" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <span className="disp" style={{ fontSize: 20, fontWeight: 800, textTransform: "uppercase" }}>Nouveau signalement</span>
-              <X size={18} style={{ cursor: "pointer", color: "#8F99A3" }} onClick={() => setShowForm(false)} />
+              <span className="disp" style={{ fontSize: 20, fontWeight: 800, textTransform: "uppercase" }}>{editingId ? "Modifier le signalement" : "Nouveau signalement"}</span>
+              <X size={18} style={{ cursor: "pointer", color: "#8F99A3" }} onClick={() => { setShowForm(false); setEditingId(null); }} />
             </div>
 
             <label style={{ fontSize: 12, color: "#A3ADB6" }}>Ligne</label>
@@ -1264,7 +1295,7 @@ export default function Sentinelle() {
             {formError && <div style={{ fontSize: 12, color: "#FF5A2E", marginBottom: 8 }}>{formError}</div>}
 
             <button type="button" onClick={submitForm} style={{ width: "100%", background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: 11, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-              Envoyer le signalement
+              {editingId ? "Enregistrer les modifications" : "Envoyer le signalement"}
             </button>
           </div>
         </div>
