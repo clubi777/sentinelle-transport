@@ -54,8 +54,8 @@ const PRIORITES = {
 
 // Numéros d'appel rapide affichés sur les signalements graves — à adapter
 // aux numéros réels du PC de ta structure.
-const PC_PHONE = "0100000000";
-const POLICE_PHONE = "17";
+const PC_PHONE = "0659017217";
+const POLICE_PHONE = "00";
 
 function freshness(tsMs) {
   const mins = (Date.now() - tsMs) / 60000;
