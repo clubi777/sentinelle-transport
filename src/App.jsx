@@ -54,7 +54,7 @@ const PRIORITES = {
 
 // Numéro d'appel rapide du PC — affiché sur chaque signalement, à adapter
 // au numéro réel du PC de ta structure.
-const PC_PHONE = "0100000000";
+const PC_PHONE = "0659017217";
 
 function freshness(tsMs) {
   const mins = (Date.now() - tsMs) / 60000;
