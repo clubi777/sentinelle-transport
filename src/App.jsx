@@ -271,17 +271,49 @@ export default function Sentinelle() {
     setDataLoading(true);
     fetchSignalements();
 
-    const channel = supabase
-      .channel("signalements-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "signalements" }, () => {
-        fetchSignalements();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "signalements" }, () => {
-        fetchSignalements();
-      })
-      .subscribe();
+    let channel = null;
+    let reconnectTimer = null;
 
-    return () => supabase.removeChannel(channel);
+    function subscribeChannel() {
+      if (channel) supabase.removeChannel(channel);
+      channel = supabase
+        .channel(`signalements-realtime-${Date.now()}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "signalements" }, () => {
+          fetchSignalements();
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "signalements" }, () => {
+          fetchSignalements();
+        })
+        .subscribe((status) => {
+          // Le canal temps réel peut se couper silencieusement (veille du
+          // téléphone, coupure réseau ponctuelle...) sans que l'agent ne
+          // voie d'erreur — on retente automatiquement plutôt que de le
+          // laisser avec des données figées sans le savoir.
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(subscribeChannel, 2000);
+          }
+        });
+    }
+
+    subscribeChannel();
+
+    // Quand l'onglet/l'appli redevient active (téléphone rouvert après un
+    // moment en veille), on force un rafraîchissement immédiat et on
+    // s'assure que le canal temps réel est toujours bien connecté.
+    function handleVisibility() {
+      if (document.visibilityState === "visible") {
+        fetchSignalements();
+        subscribeChannel();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      clearTimeout(reconnectTimer);
+      if (channel) supabase.removeChannel(channel);
+    };
   }, [session, fetchSignalements]);
 
   // Retente l'envoi des signalements mis en attente hors-ligne dès que le
