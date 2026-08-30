@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { AlertTriangle, AlertCircle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Copy, WifiOff, Trash2, Phone, Search, Navigation, Pencil } from "lucide-react";
+import { AlertTriangle, AlertCircle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Copy, WifiOff, Trash2, Phone, Search, Navigation, Pencil, CameraOff } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import AdminPanel from "./AdminPanel";
 import jsPDF from "jspdf";
@@ -32,6 +32,7 @@ const TYPES = {
   vente: { label: "Vente illégale de titres", short: "VTT", icon: Ticket, color: "#FFC145" },
   attouchement: { label: "Attouchement", short: "ATT", icon: Hand, color: "#F0559C" },
   agression: { label: "Agression", short: "AGR", icon: Swords, color: "#DC2626" },
+  camera_obstruee: { label: "Caméra obstruée", short: "CAM", icon: CameraOff, color: "#8B5CF6" },
   autre: { label: "Autre", short: "AUTRE", icon: MoreHorizontal, color: "#8AA0B4" },
 };
 
@@ -398,7 +399,7 @@ export default function Sentinelle() {
   }, [signalements, searchStart, searchEnd, searchType, searchLine]);
 
   const searchBreakdown = useMemo(() => {
-    const counts = { pickpocket: 0, vente: 0, attouchement: 0, agression: 0, autre: 0 };
+    const counts = { pickpocket: 0, vente: 0, attouchement: 0, agression: 0, camera_obstruee: 0, autre: 0 };
     searchResults.forEach((s) => { counts[s.type] = (counts[s.type] || 0) + 1; });
     return counts;
   }, [searchResults]);
@@ -532,16 +533,17 @@ export default function Sentinelle() {
 
   // ---- Suivi de position en direct — réservé aux opérateurs vidéo pour l'instant ----
   const [trackingId, setTrackingId] = useState(null);
+  const [trackLigne, setTrackLigne] = useState("");
   const [trackStation, setTrackStation] = useState("");
   const [expandedTrajId, setExpandedTrajId] = useState(null);
 
   async function updatePosition(s) {
-    if (!trackStation) return;
-    const entry = { ligne: s.ligne, station: trackStation, at: new Date().toISOString(), par: profile?.equipe ? `${profile.equipe} (${profile.nom})` : profile?.matricule };
+    if (!trackStation || !trackLigne) return;
+    const entry = { ligne: trackLigne, station: trackStation, at: new Date().toISOString(), par: profile?.equipe ? `${profile.equipe} (${profile.nom})` : profile?.matricule };
     const trajectoire = [...(s.trajectoire || []), entry];
     const { error } = await supabase.from("signalements").update({
       trajectoire,
-      derniere_position_ligne: s.ligne,
+      derniere_position_ligne: trackLigne,
       derniere_position_station: trackStation,
       derniere_position_at: entry.at,
     }).eq("id", s.id);
@@ -966,7 +968,7 @@ export default function Sentinelle() {
                           </button>
                         )}
                         {profile?.role === "operateur_video" && (
-                          <button onClick={() => { setTrackingId(trackingId === s.id ? null : s.id); setTrackStation(s.derniere_position_station || s.station); }} title="Mettre à jour la position suivie de cet individu" style={{ background: trackingId === s.id ? "#38BDF822" : "none", border: "1px solid #38BDF8", color: "#38BDF8", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                          <button onClick={() => { const open = trackingId === s.id; setTrackingId(open ? null : s.id); setTrackLigne(s.derniere_position_ligne || s.ligne); setTrackStation(s.derniere_position_station || s.station); }} title="Mettre à jour la position suivie de cet individu" style={{ background: trackingId === s.id ? "#38BDF822" : "none", border: "1px solid #38BDF8", color: "#38BDF8", borderRadius: 4, padding: "3px 7px", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                             <Navigation size={11} /> Suivre
                           </button>
                         )}
@@ -980,9 +982,16 @@ export default function Sentinelle() {
                       </div>
                     </div>
                     {trackingId === s.id && (
-                      <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
-                        <select value={trackStation} onChange={(e) => setTrackStation(e.target.value)} style={{ flex: 1, background: "#0A0D10", color: "#E8ECEF", border: "1px solid #38BDF8", borderRadius: 4, padding: "5px 6px", fontSize: 12, colorScheme: "light" }}>
-                          {LINES[s.ligne].stations.map((st) => <option key={st} value={st} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{st}</option>)}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, alignItems: "center" }}>
+                        <select
+                          value={trackLigne}
+                          onChange={(e) => { const newLigne = e.target.value; setTrackLigne(newLigne); setTrackStation(LINES[newLigne].stations[0]); }}
+                          style={{ background: "#0A0D10", color: "#E8ECEF", border: "1px solid #38BDF8", borderRadius: 4, padding: "5px 6px", fontSize: 12, colorScheme: "light" }}
+                        >
+                          {Object.entries(LINES).map(([id, l]) => <option key={id} value={id} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{l.name}</option>)}
+                        </select>
+                        <select value={trackStation} onChange={(e) => setTrackStation(e.target.value)} style={{ flex: 1, minWidth: 140, background: "#0A0D10", color: "#E8ECEF", border: "1px solid #38BDF8", borderRadius: 4, padding: "5px 6px", fontSize: 12, colorScheme: "light" }}>
+                          {LINES[trackLigne].stations.map((st) => <option key={st} value={st} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{st}</option>)}
                         </select>
                         <button onClick={() => updatePosition(s)} style={{ background: "#38BDF8", color: "#0A0D10", border: "none", borderRadius: 4, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>OK</button>
                       </div>
