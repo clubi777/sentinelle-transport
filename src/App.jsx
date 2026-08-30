@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { AlertTriangle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Bell, BellOff, Copy, WifiOff, Trash2, Phone, Search, Navigation, Pencil } from "lucide-react";
+import { AlertTriangle, AlertCircle, Ticket, Users, Clock, MapPin, X, ChevronRight, Activity, LogIn, ShieldCheck, Hand, Swords, MoreHorizontal, FileDown, Copy, WifiOff, Trash2, Phone, Search, Navigation, Pencil } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import AdminPanel from "./AdminPanel";
 import jsPDF from "jspdf";
@@ -30,7 +30,7 @@ const LINES = {
 const TYPES = {
   pickpocket: { label: "Vol à la tire", short: "VOL", icon: AlertTriangle, color: "#FF5A2E" },
   vente: { label: "Vente illégale de titres", short: "VTT", icon: Ticket, color: "#FFC145" },
-  attouchement: { label: "Attouchement", short: "ATT", icon: Hand, color: "#E1306C" },
+  attouchement: { label: "Attouchement", short: "ATT", icon: Hand, color: "#F0559C" },
   agression: { label: "Agression", short: "AGR", icon: Swords, color: "#DC2626" },
   autre: { label: "Autre", short: "AUTRE", icon: MoreHorizontal, color: "#8AA0B4" },
 };
@@ -38,7 +38,7 @@ const TYPES = {
 // Pictogramme distinct par statut (forme + couleur), en plus du texte —
 // plus lisible qu'un simple code couleur, notamment en un coup d'œil sur le terrain.
 const STATUTS = {
-  nouveau: { label: "Nouveau", color: "#FF5A2E", icon: AlertTriangle },
+  nouveau: { label: "Nouveau", color: "#FF5A2E", icon: AlertCircle },
   pris_en_charge: { label: "Pris en charge", color: "#FFC145", icon: Clock, action: "Pris en charge par" },
   interpellation: { label: "Interpellation", color: "#23C9A7", icon: ShieldCheck, action: "Interpellé par" },
   faux_positif: { label: "Faux positif", color: "#8F99A3", icon: X, action: "Classé faux positif par" },
@@ -54,7 +54,7 @@ const PRIORITES = {
 
 // Numéro d'appel rapide du PC — affiché sur chaque signalement, à adapter
 // au numéro réel du PC de ta structure.
-const PC_PHONE = "0659017217";
+const PC_PHONE = "0100000000";
 
 function freshness(tsMs) {
   const mins = (Date.now() - tsMs) / 60000;
@@ -202,49 +202,6 @@ export default function Sentinelle() {
   const [formError, setFormError] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
 
-  // ---- Notifications (son + notif navigateur sur nouveau signalement) ----
-  const [notifEnabled, setNotifEnabled] = useState(() => localStorage.getItem("sentinelle_notif") !== "off");
-  const [notifScope, setNotifScope] = useState(() => localStorage.getItem("sentinelle_notif_scope") || "active"); // "active" | "all"
-  const audioCtxRef = React.useRef(null);
-  const profileRef = React.useRef(profile);
-  const activeLineRef = React.useRef(activeLine);
-  const notifEnabledRef = React.useRef(notifEnabled);
-  const notifScopeRef = React.useRef(notifScope);
-  const sessionRef = React.useRef(session);
-
-  useEffect(() => { profileRef.current = profile; }, [profile]);
-  useEffect(() => {
-    if (profile?.role === "agent_station" && tab === "stats") setTab("carte");
-  }, [profile, tab]);
-  useEffect(() => { activeLineRef.current = activeLine; }, [activeLine]);
-  useEffect(() => { notifEnabledRef.current = notifEnabled; }, [notifEnabled]);
-  useEffect(() => { notifScopeRef.current = notifScope; }, [notifScope]);
-  useEffect(() => { sessionRef.current = session; }, [session]);
-
-  function playBeep() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") ctx.resume();
-      const now = ctx.currentTime;
-      [0, 0.18].forEach((offset) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0.0001, now + offset);
-        gain.gain.exponentialRampToValueAtTime(0.28, now + offset + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.15);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(now + offset);
-        osc.stop(now + offset + 0.16);
-      });
-    } catch { /* silence si le contexte audio n'est pas disponible */ }
-  }
-
   function duplicateSignalement(s) {
     setActiveLine(s.ligne);
     setEditingId(null);
@@ -267,46 +224,9 @@ export default function Sentinelle() {
     return true;
   }
 
-  function toggleNotifications() {
-    const next = !notifEnabled;
-    setNotifEnabled(next);
-    localStorage.setItem("sentinelle_notif", next ? "on" : "off");
-    if (next) {
-      // Le clic utilisateur débloque l'audio + déclenche la demande de permission navigateur
-      playBeep();
-      if (typeof Notification !== "undefined" && Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-    }
-  }
-
-  function cycleNotifScope() {
-    const next = notifScope === "active" ? "all" : "active";
-    setNotifScope(next);
-    localStorage.setItem("sentinelle_notif_scope", next);
-  }
-
-  function notifyNewSignalement(row) {
-    if (!notifEnabledRef.current) return;
-    if (row.agent_id && row.agent_id === sessionRef.current?.user?.id) return; // pas de notif pour son propre signalement
-    const prof = profileRef.current;
-    const isStationAgent = prof?.role === "agent_station";
-    const relevant = isStationAgent
-      ? row.ligne === prof.ligne_affectee
-      : notifScopeRef.current === "all" || row.ligne === activeLineRef.current;
-    if (!relevant) return;
-    playBeep();
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      const lineName = LINES[row.ligne]?.name || row.ligne;
-      const typeLabel = TYPES[row.type]?.label || row.type;
-      try {
-        new Notification("Nouveau signalement", {
-          body: `${lineName} · ${row.station} · ${typeLabel}`,
-          tag: row.id,
-        });
-      } catch { /* notif indisponible, le son suffit */ }
-    }
-  }
+  useEffect(() => {
+    if (profile?.role === "agent_station" && tab === "stats") setTab("carte");
+  }, [profile, tab]);
 
   // ---- Auth : écoute la session Supabase ----
   useEffect(() => {
@@ -353,8 +273,7 @@ export default function Sentinelle() {
 
     const channel = supabase
       .channel("signalements-realtime")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "signalements" }, (payload) => {
-        notifyNewSignalement(payload.new);
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "signalements" }, () => {
         fetchSignalements();
       })
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "signalements" }, () => {
@@ -582,6 +501,7 @@ export default function Sentinelle() {
   // ---- Suivi de position en direct — réservé aux opérateurs vidéo pour l'instant ----
   const [trackingId, setTrackingId] = useState(null);
   const [trackStation, setTrackStation] = useState("");
+  const [expandedTrajId, setExpandedTrajId] = useState(null);
 
   async function updatePosition(s) {
     if (!trackStation) return;
@@ -809,14 +729,6 @@ export default function Sentinelle() {
               <WifiOff size={12} /> {pendingCount} en attente
             </span>
           )}
-          {profile?.role !== "agent_station" && notifEnabled && (
-            <button onClick={cycleNotifScope} title="Portée des alertes sonores" style={{ background: "none", border: "1px solid #1E262D", color: "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 11, cursor: "pointer" }}>
-              {notifScope === "active" ? "Alertes : ma ligne" : "Alertes : toutes lignes"}
-            </button>
-          )}
-          <button onClick={toggleNotifications} title={notifEnabled ? "Désactiver les alertes" : "Activer les alertes"} style={{ background: "none", border: "1px solid #1E262D", color: notifEnabled ? "#FF5A2E" : "#8F99A3", borderRadius: 6, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center" }}>
-            {notifEnabled ? <Bell size={15} /> : <BellOff size={15} />}
-          </button>
           {profile?.role === "admin" && (
             <button onClick={() => setTab("admin")} style={{ background: "none", border: "1px solid #1E262D", color: tab === "admin" ? "#FF5A2E" : "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
               <ShieldCheck size={13} /> Administration
@@ -919,19 +831,19 @@ export default function Sentinelle() {
                           {count > 0 && <span className="mono" style={{ fontSize: 10, color: "#8F99A3" }}>{count} sign.</span>}
                         </div>
                         {pins.length > 0 && (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, minWidth: 0 }}>
                             {pins.map((s) => {
                               const tsMs = new Date(s.created_at).getTime();
                               const fresh = freshness(tsMs);
                               const StatutIcon = STATUTS[s.statut].icon;
                               const statutColor = STATUTS[s.statut].color;
                               return (
-                                <div key={s.id} className="pin" onClick={() => setSelectedPin(s)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", background: `${statutColor}1A`, border: "1px solid #1E262D", borderLeft: `4px solid ${statutColor}`, borderRadius: 6, padding: "6px 10px 6px 8px", transition: "transform 0.15s" }}>
+                                <div key={s.id} className="pin" onClick={() => setSelectedPin(s)} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, cursor: "pointer", background: `${statutColor}1A`, border: "1px solid #1E262D", borderLeft: `4px solid ${statutColor}`, borderRadius: 6, padding: "6px 10px 6px 8px", transition: "transform 0.15s" }}>
                                   <div title={STATUTS[s.statut].label} style={{ width: 22, height: 22, borderRadius: "50%", background: statutColor, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, animation: fresh.pulse ? "pulse-ring 1.6s infinite" : "none" }}>
                                     <StatutIcon size={12} color="#0A0D10" />
                                   </div>
                                   <span title={TYPES[s.type].label} className="mono" style={{ fontSize: 9, fontWeight: 700, background: TYPES[s.type].color, color: "#0A0D10", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>{TYPES[s.type].short}</span>
-                                  <span style={{ fontSize: 12, color: "#B4BCC4", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.description}</span>
+                                  <span style={{ fontSize: 12, color: "#B4BCC4", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.description}</span>
                                   <span className="mono" style={{ fontSize: 9, color: statutColor, flexShrink: 0, textTransform: "uppercase" }}>{STATUTS[s.statut].label}</span>
                                   <span className="mono" style={{ fontSize: 10, color: fresh.color, flexShrink: 0 }}>{fresh.label}</span>
                                 </div>
@@ -1048,7 +960,26 @@ export default function Sentinelle() {
                         <Navigation size={10} style={{ verticalAlign: -1, marginRight: 3 }} />
                         Dernière position suivie : <span style={{ fontWeight: 600 }}>{s.derniere_position_station}</span>
                         {s.derniere_position_at && <> · {fmtTime(new Date(s.derniere_position_at).getTime())}</>}
-                        {s.trajectoire?.length > 1 && <span className="mono" style={{ color: "#8F99A3" }}> · {s.trajectoire.length} positions enregistrées</span>}
+                        {s.trajectoire?.length > 1 && (
+                          <span
+                            className="mono"
+                            onClick={() => setExpandedTrajId(expandedTrajId === s.id ? null : s.id)}
+                            style={{ color: "#8F99A3", cursor: "pointer", textDecoration: "underline", marginLeft: 4 }}
+                          >
+                            · {s.trajectoire.length} positions enregistrées {expandedTrajId === s.id ? "▲" : "▼"}
+                          </span>
+                        )}
+                        {expandedTrajId === s.id && s.trajectoire?.length > 0 && (
+                          <div style={{ marginTop: 6, paddingLeft: 14, borderLeft: "2px solid #38BDF855", display: "flex", flexDirection: "column", gap: 4 }}>
+                            {[...s.trajectoire].reverse().map((pos, i) => (
+                              <div key={i} style={{ color: "#B4BCC4" }}>
+                                <span style={{ fontWeight: 600 }}>{pos.station}</span>
+                                {pos.at && <> · {fmtDateTime(new Date(pos.at).getTime())}</>}
+                                {pos.par && <span style={{ color: "#8F99A3" }}> · {pos.par}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     {s.statut !== "nouveau" && s.statut_agent && (
