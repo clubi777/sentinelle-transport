@@ -57,6 +57,17 @@ const PRIORITES = {
 // au numéro réel du PC de ta structure.
 const PC_PHONE = "0100000000";
 
+// Clé publique VAPID pour les notifications push — la clé privée correspondante
+// est stockée côté serveur (secret Supabase), jamais ici.
+const VAPID_PUBLIC_KEY = "BHGUwotpl5h6AgZ2wb_BkutExliK1wR6UvAeo1DDUL2vi79uYpW7DPfClh1iL7BTY-OJIXtm66TEwQkJqpaioFc";
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
 function freshness(tsMs) {
   const mins = (Date.now() - tsMs) / 60000;
   if (mins < 15) return { label: "< 15 min", color: "#FF5A2E", pulse: true };
@@ -145,7 +156,7 @@ function equipeLabel(s) {
   return `${s.agents.equipe} (${s.agents.nom})`;
 }
 
-export default function Sentinelle() {
+export default function VciOps() {
   const [session, setSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [profile, setProfile] = useState(null); // ligne de public.agents pour l'utilisateur connecté
@@ -166,10 +177,71 @@ export default function Sentinelle() {
   const [searchLine, setSearchLine] = useState("all");
   const [tab, setTab] = useState("carte");
   const [showForm, setShowForm] = useState(false);
+  // ---- Notifications push (réservées pour l'instant aux équipes civil et tenue) ----
+  const [pushStatus, setPushStatus] = useState("unknown"); // unknown | unsupported | off | on | denied
+  const [pushBusy, setPushBusy] = useState(false);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unsupported");
+      return;
+    }
+    navigator.serviceWorker.register("/sw.js").then(async (reg) => {
+      const sub = await reg.pushManager.getSubscription();
+      setPushStatus(sub ? "on" : "off");
+    }).catch(() => setPushStatus("unsupported"));
+  }, []);
+
+  async function enablePush() {
+    if (!session) return;
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushStatus("denied");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+      const json = sub.toJSON();
+      const { error } = await supabase.from("push_subscriptions").upsert({
+        agent_id: session.user.id,
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+      }, { onConflict: "endpoint" });
+      if (error) throw error;
+      setPushStatus("on");
+    } catch (e) {
+      setDataError("Erreur lors de l'activation des notifications : " + e.message);
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+  async function disablePush() {
+    setPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await supabase.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setPushStatus("off");
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
+
   const [editingId, setEditingId] = useState(null);
   const [showLegend, setShowLegend] = useState(false);
   // ---- Mode hors-ligne basique : file d'attente locale, envoi auto au retour réseau ----
-  const OFFLINE_QUEUE_KEY = "sentinelle_offline_queue";
+  const OFFLINE_QUEUE_KEY = "vci_ops_offline_queue";
   const [pendingCount, setPendingCount] = useState(() => {
     try { return (JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]")).length; } catch { return 0; }
   });
@@ -442,6 +514,8 @@ export default function Sentinelle() {
   }, [searchResults]);
 
   const clusters = useMemo(() => computeRecurrence(searchResults), [searchResults]);
+  // Signalements suivis par un opérateur vidéo (au moins une position enregistrée) sur la période affichée.
+  const trackedSignalements = useMemo(() => searchResults.filter((s) => s.trajectoire && s.trajectoire.length > 0), [searchResults]);
   // Un agent de station ou un opérateur vidéo peut uniquement signaler — il ne
   // traite pas l'intervention lui-même, donc pas de changement de statut.
   const canEditStatut = profile?.role !== "agent_station" && profile?.role !== "operateur_video";
@@ -511,12 +585,16 @@ export default function Sentinelle() {
     fetchSignalements();
   }
 
-  async function updateStatut(id, statut) {
+  async function updateStatut(s, statut) {
+    const now = new Date().toISOString();
+    const entry = { statut, par: profile?.equipe ? `${profile.equipe} (${profile.nom})` : profile?.matricule, at: now };
+    const historique = [...(s.historique_statuts || []), entry];
     const { error } = await supabase.from("signalements").update({
       statut,
       statut_agent_id: session.user.id,
-      statut_updated_at: new Date().toISOString(),
-    }).eq("id", id);
+      statut_updated_at: now,
+      historique_statuts: historique,
+    }).eq("id", s.id);
     if (error) setDataError("Erreur de mise à jour : " + error.message);
     else fetchSignalements();
   }
@@ -587,7 +665,7 @@ export default function Sentinelle() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
       doc.setTextColor(...navy);
-      doc.text("SENTINELLE TRANSPORT", left + 20, 18);
+      doc.text("VCI OPS", left + 20, 18);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10.5);
       doc.setTextColor(...gray);
@@ -679,11 +757,93 @@ export default function Sentinelle() {
         doc.setPage(i);
         doc.setFontSize(8);
         doc.setTextColor(...gray);
-        doc.text("Sentinelle Transport — document généré automatiquement, usage interne", left, 290);
+        doc.text("VCI OPS — document généré automatiquement, usage interne", left, 290);
         doc.text(`Page ${i}/${pageCount}`, pageWidth - left, 290, { align: "right" });
       }
 
-      doc.save(`sentinelle-transport-rapport-${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`vci-ops-rapport-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  // Rapport séparé, dédié aux opérateurs vidéo : uniquement les signalements
+  // suivis (au moins une position enregistrée), avec le détail chronologique
+  // complet de chaque trajectoire — volontairement distinct du rapport
+  // statistique général pour rester lisible et centré sur le suivi.
+  async function exportSuiviPDF() {
+    setPdfBusy(true);
+    try {
+      const logo = await loadLogoBase64();
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const navy = [11, 31, 58];
+      const blue = [56, 189, 248];
+      const gray = [91, 102, 112];
+      const left = 15;
+
+      if (logo) {
+        try { doc.addImage(logo, "PNG", left, 10, 16, 16); } catch { /* logo illisible, on continue sans */ }
+      }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(...navy);
+      doc.text("VCI OPS", left + 20, 18);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10.5);
+      doc.setTextColor(...gray);
+      doc.text("Rapport de suivi — opérateurs vidéo", left + 20, 24);
+
+      doc.setDrawColor(...blue);
+      doc.setLineWidth(0.8);
+      doc.line(left, 30, pageWidth - left, 30);
+
+      const periodLabel = searchStart === searchEnd
+        ? `Période : ${new Date(searchStart).toLocaleDateString("fr-FR")}`
+        : `Période : du ${new Date(searchStart).toLocaleDateString("fr-FR")} au ${new Date(searchEnd).toLocaleDateString("fr-FR")}`;
+
+      doc.setFontSize(9.5);
+      doc.setTextColor(...navy);
+      doc.text(periodLabel, left, 37);
+      doc.setTextColor(...gray);
+      doc.text(`Généré le ${new Date().toLocaleString("fr-FR")}`, pageWidth - left, 37, { align: "right" });
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(...navy);
+      doc.text(`${trackedSignalements.length} signalement${trackedSignalements.length > 1 ? "s" : ""} suivi${trackedSignalements.length > 1 ? "s" : ""}`, left, 47);
+
+      autoTable(doc, {
+        startY: 54,
+        head: [["Signalement", "Type", "Description", "Position", "Ligne", "Date/heure", "Par"]],
+        body: trackedSignalements.length > 0
+          ? trackedSignalements.flatMap((s, gi) =>
+              s.trajectoire.map((pos, idx) => [
+                idx === 0 ? `#${gi + 1} — ${s.station}` : "",
+                idx === 0 ? TYPES[s.type]?.label || s.type : "",
+                idx === 0 ? s.description.slice(0, 45) : "",
+                pos.station,
+                LINES[pos.ligne]?.name || pos.ligne,
+                pos.at ? fmtDateTime(new Date(pos.at).getTime()) : "—",
+                pos.par || "—",
+              ])
+            )
+          : [["—", "Aucun signalement suivi sur cette période", "", "", "", "", ""]],
+        headStyles: { fillColor: blue, textColor: 255, fontSize: 9 },
+        styles: { fontSize: 8 },
+        margin: { left, right: left },
+      });
+
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(...gray);
+        doc.text("VCI OPS — document généré automatiquement, usage interne", left, 290);
+        doc.text(`Page ${i}/${pageCount}`, pageWidth - left, 290, { align: "right" });
+      }
+
+      doc.save(`vci-ops-suivi-${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
       setPdfBusy(false);
     }
@@ -704,10 +864,11 @@ export default function Sentinelle() {
       <div style={{ background: "#0A0D10", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', sans-serif", padding: 16 }}>
         <style>{FONT_IMPORT}</style>
         <div style={{ background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 28, width: 380, maxWidth: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <img src="/logo.png" alt="" width={32} height={32} style={{ borderRadius: 8 }} />
-            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 800, color: "#E8ECEF", textTransform: "uppercase" }}>Sentinelle Transport</span>
+            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 800, color: "#E8ECEF", textTransform: "uppercase" }}>VCI OPS</span>
           </div>
+          <div style={{ fontSize: 10.5, color: "#8F99A3", marginBottom: 14, letterSpacing: 0.5 }}>Vigilance · Coordination · Intervention</div>
 
           <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 18 }}>Connexion avec le matricule et le mot de passe fournis par un administrateur.</div>
 
@@ -753,7 +914,7 @@ export default function Sentinelle() {
       <div style={{ borderBottom: "1px solid #1E262D", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#0A0D10", zIndex: 20, flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <img src="/logo.png" alt="" width={26} height={26} style={{ borderRadius: 6 }} />
-          <span className="disp" style={{ fontSize: 21, fontWeight: 800, textTransform: "uppercase" }}>Sentinelle Transport</span>
+          <span className="disp" style={{ fontSize: 21, fontWeight: 800, textTransform: "uppercase" }}>VCI OPS</span>
           {dataError && <span style={{ fontSize: 11, color: "#FF5A2E" }}>{dataError}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -767,6 +928,17 @@ export default function Sentinelle() {
             <button onClick={() => setTab("admin")} style={{ background: "none", border: "1px solid #1E262D", color: tab === "admin" ? "#FF5A2E" : "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
               <ShieldCheck size={13} /> Administration
             </button>
+          )}
+          {(profile?.role === "agent_gpsr_civil" || profile?.role === "agent_gpsr_tenue") && pushStatus !== "unsupported" && (
+            pushStatus === "on" ? (
+              <button onClick={disablePush} disabled={pushBusy} title="Désactiver les notifications push" style={{ background: "#23C9A722", border: "1px solid #23C9A7", color: "#23C9A7", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                <Navigation size={13} /> Notifs activées
+              </button>
+            ) : (
+              <button onClick={enablePush} disabled={pushBusy} title="Recevoir une alerte même appli fermée" style={{ background: "none", border: "1px solid #1E262D", color: pushStatus === "denied" ? "#DC2626" : "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                <Navigation size={13} /> {pushBusy ? "…" : pushStatus === "denied" ? "Notifs refusées" : "Activer les notifs"}
+              </button>
+            )
           )}
           <button onClick={signOut} style={{ background: "none", border: "1px solid #1E262D", color: "#8F99A3", borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer" }}>Fin de service</button>
           <button onClick={() => { setEditingId(null); setForm({ line: activeLine, station: LINES[activeLine].stations[0], type: "pickpocket", priorite: "normale", nb: 1, desc: "" }); setShowForm(true); }} style={{ background: "#FF5A2E", color: "#0A0D10", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
@@ -973,7 +1145,7 @@ export default function Sentinelle() {
                           </button>
                         )}
                         {canEditStatut ? (
-                        <select value={s.statut} onChange={(e) => updateStatut(s.id, e.target.value)} style={{ background: "#0A0D10", color: statutInfo.color, border: `1px solid ${statutInfo.color}`, borderRadius: 4, fontSize: 11, padding: "3px 6px", colorScheme: "light" }}>
+                        <select value={s.statut} onChange={(e) => updateStatut(s, e.target.value)} style={{ background: "#0A0D10", color: statutInfo.color, border: `1px solid ${statutInfo.color}`, borderRadius: 4, fontSize: 11, padding: "3px 6px", colorScheme: "light" }}>
                           {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{v.label}</option>)}
                         </select>
                         ) : (
@@ -1218,6 +1390,42 @@ export default function Sentinelle() {
               </div>
             ))}
           </div>
+
+          {profile?.role === "operateur_video" && (
+            <div style={{ flex: "1 1 100%", minWidth: 0, background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+                <div className="disp" style={{ fontSize: 14, color: "#8F99A3", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
+                  <Navigation size={14} /> Signalements suivis
+                </div>
+                <button onClick={exportSuiviPDF} disabled={pdfBusy} style={{ background: "none", border: "1px solid #38BDF8", color: "#38BDF8", borderRadius: 6, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                  <FileDown size={13} /> {pdfBusy ? "Génération…" : "Exporter en PDF"}
+                </button>
+              </div>
+              <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 16 }}>Signalements avec au moins une position enregistrée, sur la période affichée ci-dessus.</div>
+              {trackedSignalements.length === 0 && <div style={{ fontSize: 13, color: "#8F99A3" }}>Aucun signalement suivi sur cette période.</div>}
+              {trackedSignalements.map((s) => (
+                <div key={s.id} style={{ background: "#0A0D10", border: "1px solid #1E262D", borderLeft: "4px solid #38BDF8", borderRadius: 8, padding: 14, marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                    <span className="mono" style={{ fontSize: 11, background: LINES[s.ligne].color, color: LINES[s.ligne].dark ? "#fff" : "#0A0D10", borderRadius: 4, padding: "2px 7px" }}>{s.ligne}</span>
+                    <span className="mono" style={{ fontSize: 9, fontWeight: 700, background: TYPES[s.type].color, color: "#0A0D10", borderRadius: 4, padding: "2px 6px" }}>{TYPES[s.type].short}</span>
+                    <span style={{ fontWeight: 700, fontSize: 14 }}>{s.station}</span>
+                    <span style={{ color: "#A3ADB6", fontSize: 13 }}>— {s.description}</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 4 }}>
+                    {[...s.trajectoire].reverse().map((pos, idx) => (
+                      <div key={idx} style={{ fontSize: 12, color: "#B4BCC4" }}>
+                        <span className="mono" style={{ fontSize: 10, color: "#8F99A3" }}>{s.trajectoire.length - idx}.</span>{" "}
+                        <span style={{ fontWeight: 600 }}>{pos.station}</span>
+                        {pos.ligne && <span className="mono" style={{ color: "#8F99A3" }}> ({LINES[pos.ligne]?.name || pos.ligne})</span>}
+                        {pos.at && <> · {fmtDateTime(new Date(pos.at).getTime())}</>}
+                        {pos.par && <span style={{ color: "#8F99A3" }}> · {pos.par}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1297,7 +1505,7 @@ export default function Sentinelle() {
                 Statut
               </label>
               {canEditStatut ? (
-                <select value={pin.statut} onChange={(e) => updateStatut(pin.id, e.target.value)} style={{ width: "100%", background: "#0A0D10", color: statutInfo.color, border: `1px solid ${statutInfo.color}`, borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 10, colorScheme: "light" }}>
+                <select value={pin.statut} onChange={(e) => updateStatut(pin, e.target.value)} style={{ width: "100%", background: "#0A0D10", color: statutInfo.color, border: `1px solid ${statutInfo.color}`, borderRadius: 6, padding: 9, marginTop: 4, marginBottom: 10, colorScheme: "light" }}>
                   {Object.entries(STATUTS).map(([k, v]) => <option key={k} value={k} style={{ color: "#0A0D10", background: "#FFFFFF" }}>{v.label}</option>)}
                 </select>
               ) : (
@@ -1308,6 +1516,25 @@ export default function Sentinelle() {
                 <div style={{ fontSize: 12, color: "#A3ADB6" }}>
                   {statutInfo.action} <span style={{ color: "#E8ECEF" }}>{pin.statut_agent.equipe} ({pin.statut_agent.nom})</span>
                   {pin.statut_updated_at && <> · {fmtTime(new Date(pin.statut_updated_at).getTime())}</>}
+                </div>
+              )}
+
+              {pin.historique_statuts?.length > 0 && (
+                <div style={{ marginTop: 12, borderTop: "1px solid #1E262D", paddingTop: 10 }}>
+                  <div style={{ fontSize: 11, color: "#8F99A3", textTransform: "uppercase", marginBottom: 6 }}>Historique complet</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                    {pin.historique_statuts.map((h, i) => {
+                      const hInfo = STATUTS[h.statut] || {};
+                      return (
+                        <div key={i} style={{ fontSize: 12, color: "#B4BCC4", display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: hInfo.color || "#8F99A3", flexShrink: 0 }} />
+                          <span style={{ fontWeight: 600, color: hInfo.color || "#B4BCC4" }}>{hInfo.label || h.statut}</span>
+                          {h.par && <span style={{ color: "#8F99A3" }}>par {h.par}</span>}
+                          {h.at && <span className="mono" style={{ color: "#8F99A3", fontSize: 11 }}>· {fmtDateTime(new Date(h.at).getTime())}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
