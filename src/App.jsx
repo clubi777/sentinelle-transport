@@ -156,7 +156,7 @@ function equipeLabel(s) {
   return `${s.agents.equipe} (${s.agents.nom})`;
 }
 
-export default function VciOps() {
+export default function Vigera() {
   const [session, setSession] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
   const [profile, setProfile] = useState(null); // ligne de public.agents pour l'utilisateur connecté
@@ -241,7 +241,7 @@ export default function VciOps() {
   const [editingId, setEditingId] = useState(null);
   const [showLegend, setShowLegend] = useState(false);
   // ---- Mode hors-ligne basique : file d'attente locale, envoi auto au retour réseau ----
-  const OFFLINE_QUEUE_KEY = "vci_ops_offline_queue";
+  const OFFLINE_QUEUE_KEY = "vigera_offline_queue";
   const [pendingCount, setPendingCount] = useState(() => {
     try { return (JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]")).length; } catch { return 0; }
   });
@@ -665,7 +665,7 @@ export default function VciOps() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
       doc.setTextColor(...navy);
-      doc.text("VCI OPS", left + 20, 18);
+      doc.text("VIGERA", left + 20, 18);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10.5);
       doc.setTextColor(...gray);
@@ -757,11 +757,11 @@ export default function VciOps() {
         doc.setPage(i);
         doc.setFontSize(8);
         doc.setTextColor(...gray);
-        doc.text("VCI OPS — document généré automatiquement, usage interne", left, 290);
+        doc.text("VIGERA — document généré automatiquement, usage interne", left, 290);
         doc.text(`Page ${i}/${pageCount}`, pageWidth - left, 290, { align: "right" });
       }
 
-      doc.save(`vci-ops-rapport-${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`vigera-rapport-${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
       setPdfBusy(false);
     }
@@ -788,7 +788,7 @@ export default function VciOps() {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(18);
       doc.setTextColor(...navy);
-      doc.text("VCI OPS", left + 20, 18);
+      doc.text("VIGERA", left + 20, 18);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10.5);
       doc.setTextColor(...gray);
@@ -839,11 +839,11 @@ export default function VciOps() {
         doc.setPage(i);
         doc.setFontSize(8);
         doc.setTextColor(...gray);
-        doc.text("VCI OPS — document généré automatiquement, usage interne", left, 290);
+        doc.text("VIGERA — document généré automatiquement, usage interne", left, 290);
         doc.text(`Page ${i}/${pageCount}`, pageWidth - left, 290, { align: "right" });
       }
 
-      doc.save(`vci-ops-suivi-${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`vigera-suivi-${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
       setPdfBusy(false);
     }
@@ -866,7 +866,7 @@ export default function VciOps() {
         <div style={{ background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 28, width: 380, maxWidth: "100%" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <img src="/logo.png" alt="" width={32} height={32} style={{ borderRadius: 8 }} />
-            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 800, color: "#E8ECEF", textTransform: "uppercase" }}>VCI OPS</span>
+            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 800, color: "#E8ECEF", textTransform: "uppercase" }}>VIGERA</span>
           </div>
           <div style={{ fontSize: 10.5, color: "#8F99A3", marginBottom: 14, letterSpacing: 0.5 }}>Vigilance · Coordination · Intervention</div>
 
@@ -914,7 +914,7 @@ export default function VciOps() {
       <div style={{ borderBottom: "1px solid #1E262D", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#0A0D10", zIndex: 20, flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <img src="/logo.png" alt="" width={26} height={26} style={{ borderRadius: 6 }} />
-          <span className="disp" style={{ fontSize: 21, fontWeight: 800, textTransform: "uppercase" }}>VCI OPS</span>
+          <span className="disp" style={{ fontSize: 21, fontWeight: 800, textTransform: "uppercase" }}>VIGERA</span>
           {dataError && <span style={{ fontSize: 11, color: "#FF5A2E" }}>{dataError}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>

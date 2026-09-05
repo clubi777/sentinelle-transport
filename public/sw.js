@@ -4,10 +4,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "VCI OPS", body: event.data ? event.data.text() : "Nouveau signalement" };
+    data = { title: "VIGERA", body: event.data ? event.data.text() : "Nouveau signalement" };
   }
 
-  const title = data.title || "VCI OPS";
+  const title = data.title || "VIGERA";
   const options = {
     body: data.body || "Nouveau signalement",
     icon: "/icons/icon-192.png",
