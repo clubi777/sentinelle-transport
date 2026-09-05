@@ -1,6 +1,6 @@
 {
-  "name": "Sentinelle Transport",
-  "short_name": "Sentinelle",
+  "name": "Vigera",
+  "short_name": "Vigera",
   "description": "Signalement et suivi terrain pour les équipes de sûreté en réseau de transport",
   "start_url": "/",
   "display": "standalone",
