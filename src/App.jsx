@@ -866,9 +866,9 @@ export default function Vigera() {
         <div style={{ background: "#12171C", border: "1px solid #1E262D", borderRadius: 10, padding: 28, width: 380, maxWidth: "100%" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <img src="/logo.png" alt="" width={32} height={32} style={{ borderRadius: 8 }} />
-            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 800, color: "#E8ECEF", textTransform: "uppercase" }}>VIGERA</span>
+            <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 32, fontWeight: 800, color: "#E8ECEF", textTransform: "uppercase", letterSpacing: "0.08em" }}>VIGERA</span>
           </div>
-          <div style={{ fontSize: 10.5, color: "#8F99A3", marginBottom: 14, letterSpacing: 0.5 }}>Vigilance · Coordination · Intervention</div>
+          <div style={{ fontSize: 10.5, color: "#8F99A3", marginBottom: 14, letterSpacing: 0.5 }}>Vigilance · Échange · Réactivité · Alerte</div>
 
           <div style={{ fontSize: 12, color: "#8F99A3", marginBottom: 18 }}>Connexion avec le matricule et le mot de passe fournis par un administrateur.</div>
 
@@ -914,7 +914,7 @@ export default function Vigera() {
       <div style={{ borderBottom: "1px solid #1E262D", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#0A0D10", zIndex: 20, flexWrap: "wrap", gap: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <img src="/logo.png" alt="" width={26} height={26} style={{ borderRadius: 6 }} />
-          <span className="disp" style={{ fontSize: 21, fontWeight: 800, textTransform: "uppercase" }}>VIGERA</span>
+          <span className="disp" style={{ fontSize: 26, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em" }}>VIGERA</span>
           {dataError && <span style={{ fontSize: 11, color: "#FF5A2E" }}>{dataError}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", justifyContent: "flex-end" }}>
